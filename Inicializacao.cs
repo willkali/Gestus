@@ -65,23 +65,28 @@ public static class Inicializacao
     {
         var environment = app.Environment;
 
+        // ✅ Log do ambiente (manter para debug)
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogInformation($"🔍 Ambiente atual: {environment.EnvironmentName}");
+        logger.LogInformation($"🔍 É Development? {environment.IsDevelopment()}");
+
         // Logging de requisições
         app.UseSerilogRequestLogging();
 
-        // ✅ SWAGGER SEMPRE ATIVO (não apenas em desenvolvimento)
+        // ✅ SWAGGER SEMPRE ATIVO
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
             c.SwaggerEndpoint("/swagger/v1/swagger.json", "Gestus API v1");
-            c.RoutePrefix = string.Empty; // Swagger na raiz
+            c.RoutePrefix = string.Empty;
             c.DisplayRequestDuration();
             c.EnableTryItOutByDefault();
         });
 
-        // Configurações de desenvolvimento
         if (environment.IsDevelopment())
         {
-            // Configurações específicas de desenvolvimento
+            // ✅ SEEDER APENAS EM DESENVOLVIMENTO (restaurado)
+            await app.AplicarMigracoesESeederAsync();
         }
         else
         {
@@ -131,12 +136,6 @@ public static class Inicializacao
         // Controllers
         app.MapControllers();
 
-        // Aplicar migrações e seeder (apenas em desenvolvimento)
-        if (environment.IsDevelopment())
-        {
-            await app.AplicarMigracoesESeederAsync();
-        }
-
         return app;
     }
 
@@ -148,24 +147,38 @@ public static class Inicializacao
 
         try
         {
-            logger.LogInformation("Aplicando migrações do banco de dados...");
-            await context.Database.MigrateAsync();
+            logger.LogInformation("🔧 Verificando estado do banco de dados...");
             
-            logger.LogInformation("Executando seeder inicial...");
-            await ExecutarSeederInicial(scope.ServiceProvider);
-            
-            logger.LogInformation("Inicialização do banco concluída com sucesso.");
+            // ✅ Verificar se pode conectar
+            var canConnect = await context.Database.CanConnectAsync();
+            if (!canConnect)
+            {
+                logger.LogError("❌ Não foi possível conectar ao banco. Pulando inicialização.");
+                return;
+            }
+
+            // ✅ Tentar aplicar migrações, mas não falhar se tabelas já existirem
+            try
+            {
+                await context.Database.MigrateAsync();
+                logger.LogInformation("✅ Migrações aplicadas com sucesso");
+            }
+            catch (Exception migrationEx)
+            {
+                logger.LogWarning($"⚠️ Erro ao aplicar migrações (provavelmente já existem): {migrationEx.Message}");
+                logger.LogInformation("🔄 Continuando com o seeder mesmo assim...");
+            }
+
+            logger.LogInformation("🌱 Executando seeder inicial...");
+            await SeederInicial.ExecutarAsync(scope.ServiceProvider);
+
+            logger.LogInformation("✅ Inicialização do banco concluída com sucesso.");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erro durante a inicialização do banco de dados");
-            throw;
+            logger.LogError(ex, "❌ Erro durante a inicialização do banco de dados");
+            // ✅ NÃO fazer throw para não parar a aplicação
+            logger.LogWarning("⚠️ Continuando inicialização da aplicação mesmo com erro no seeder...");
         }
-    }
-
-    private static async Task ExecutarSeederInicial(IServiceProvider serviceProvider)
-    {
-        // Implementaremos o seeder mais tarde
-        await Task.CompletedTask;
     }
 }

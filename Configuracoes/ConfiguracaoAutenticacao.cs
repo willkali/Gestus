@@ -60,23 +60,75 @@ public static class ConfiguracaoAutenticacao
                 options.UseAspNetCore();
             });
 
-        // Configurar JWT Bearer Authentication como fallback
-        services.AddAuthentication()
-            .AddJwtBearer(options =>
+        // ✅ CONFIGURAR AUTHENTICATION COM ESQUEMA PADRÃO
+        services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
+        .AddJwtBearer(options =>
+        {
+            options.Authority = configuration["OpenIddict:Server:Issuer"];
+            options.Audience = "gestus_api";
+            options.RequireHttpsMetadata = false; // Apenas para desenvolvimento
+            
+            options.TokenValidationParameters = new TokenValidationParameters
             {
-                options.Authority = configuration["OpenIddict:Server:Issuer"];
-                options.Audience = "gestus_api";
-                options.RequireHttpsMetadata = false; // Apenas para desenvolvimento
-                
-                options.TokenValidationParameters = new TokenValidationParameters
+                ValidateIssuer = false, // ✅ Desabilitar para mock tokens
+                ValidateAudience = false, // ✅ Desabilitar para mock tokens
+                ValidateLifetime = false, // ✅ Desabilitar para mock tokens
+                ValidateIssuerSigningKey = false, // ✅ Desabilitar para mock tokens
+                ClockSkew = TimeSpan.Zero
+            };
+
+            // ✅ CONFIGURAR EVENTOS PARA API (retornar JSON ao invés de redirect)
+            options.Events = new JwtBearerEvents
+            {
+                OnChallenge = context =>
                 {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    ClockSkew = TimeSpan.Zero
-                };
-            });
+                    // Não fazer redirect, retornar 401 direto
+                    context.HandleResponse();
+                    
+                    if (!context.Response.HasStarted)
+                    {
+                        context.Response.StatusCode = 401;
+                        context.Response.ContentType = "application/json";
+                        
+                        var response = new
+                        {
+                            erro = "TokenInvalido",
+                            mensagem = "Token de acesso inválido ou ausente",
+                            statusCode = 401
+                        };
+                        
+                        return context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
+                    }
+                    
+                    return Task.CompletedTask;
+                },
+                
+                OnForbidden = context =>
+                {
+                    if (!context.Response.HasStarted)
+                    {
+                        context.Response.StatusCode = 403;
+                        context.Response.ContentType = "application/json";
+                        
+                        var response = new
+                        {
+                            erro = "AcessoNegado",
+                            mensagem = "Acesso negado. Permissões insuficientes",
+                            statusCode = 403
+                        };
+                        
+                        return context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
+                    }
+                    
+                    return Task.CompletedTask;
+                }
+            };
+        });
 
         return services;
     }

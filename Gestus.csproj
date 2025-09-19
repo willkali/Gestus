@@ -8,6 +8,7 @@
     <RootNamespace>Gestus</RootNamespace>
     <Configurations>Debug;Release</Configurations>
     <LangVersion>latest</LangVersion>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- ASP.NET Core Web API & Utilitários -->
