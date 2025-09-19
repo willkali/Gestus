@@ -7,6 +7,7 @@ using Gestus.Modelos;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace Gestus.Controllers;
 
@@ -50,7 +51,7 @@ public class AutenticacaoController : ControllerBase
         {
             _logger.LogInformation("🔐 Tentativa de login para: {Email}", request.Email);
 
-            // 1. Validar dados de entrada
+            // Validar dados de entrada
             if (!ModelState.IsValid)
             {
                 return BadRequest(new RespostaErro
@@ -61,45 +62,30 @@ public class AutenticacaoController : ControllerBase
                 });
             }
 
-            // 2. Buscar usuário por email
-            var usuario = await _userManager.FindByEmailAsync(request.Email);
-            if (usuario == null)
-            {
-                _logger.LogWarning("⚠️ Tentativa de login com email inexistente: {Email}", request.Email);
-                return Unauthorized(new RespostaErro
-                {
-                    Erro = "CredenciaisInvalidas",
-                    Mensagem = "Email ou senha incorretos"
-                });
-            }
-
-            // 3. Verificar se usuário está ativo
-            if (!usuario.Ativo)
-            {
-                _logger.LogWarning("⚠️ Tentativa de login com usuário inativo: {Email}", request.Email);
-                return Unauthorized(new RespostaErro
-                {
-                    Erro = "UsuarioInativo",
-                    Mensagem = "Usuário está inativo. Entre em contato com o administrador."
-                });
-            }
-
-            // 4. Verificar senha
-            var resultadoLogin = await _signInManager.CheckPasswordSignInAsync(usuario, request.Senha, true);
+            // ✅ USAR TOKENS REAIS: Redirecionar para endpoint OpenIddict
+            using var httpClient = new HttpClient();
             
-            if (resultadoLogin.IsLockedOut)
+            // Fazer requisição para nosso endpoint de token
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var tokenEndpoint = $"{baseUrl}/connect/token";
+            
+            var tokenRequest = new FormUrlEncodedContent(new[]
             {
-                _logger.LogWarning("⚠️ Usuário bloqueado: {Email}", request.Email);
-                return Unauthorized(new RespostaErro
-                {
-                    Erro = "UsuarioBloqueado",
-                    Mensagem = "Usuário temporariamente bloqueado devido a muitas tentativas de login incorretas"
-                });
-            }
+                new KeyValuePair<string, string>("grant_type", "password"),
+                new KeyValuePair<string, string>("client_id", "gestus_api"),
+                new KeyValuePair<string, string>("client_secret", "gestus_api_secret_2024"),
+                new KeyValuePair<string, string>("username", request.Email),
+                new KeyValuePair<string, string>("password", request.Senha),
+                new KeyValuePair<string, string>("scope", "openid profile email roles")
+            });
 
-            if (!resultadoLogin.Succeeded)
+            var response = await httpClient.PostAsync(tokenEndpoint, tokenRequest);
+            
+            if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("⚠️ Senha incorreta para: {Email}", request.Email);
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("⚠️ Erro no token endpoint: {Error}", errorContent);
+                
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "CredenciaisInvalidas",
@@ -107,29 +93,30 @@ public class AutenticacaoController : ControllerBase
                 });
             }
 
-            // 5. Atualizar último login
-            usuario.UltimoLogin = DateTime.UtcNow;
-            await _userManager.UpdateAsync(usuario);
+            var tokenResponse = await response.Content.ReadAsStringAsync();
+            var tokenData = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(tokenResponse);
+            
+            var accessToken = tokenData.GetProperty("access_token").GetString()!;
+            var expiresIn = tokenData.GetProperty("expires_in").GetInt32();
+            var refreshToken = tokenData.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
 
-            // 6. Obter papéis e permissões do usuário
-            var papeis = await _userManager.GetRolesAsync(usuario);
-            var permissoes = await ObterPermissoesUsuario(usuario.Id);
-
-            // 7. Gerar token
-            var token = await GerarTokenAcesso(usuario, papeis, permissoes);
+            // Buscar informações do usuário
+            var usuario = await _userManager.FindByEmailAsync(request.Email);
+            var papeis = await _userManager.GetRolesAsync(usuario!);
+            var permissoes = await ObterPermissoesUsuario(usuario!.Id);
 
             _logger.LogInformation("✅ Login realizado com sucesso para: {Email}", request.Email);
 
             return Ok(new RespostaLogin
             {
                 Sucesso = true,
-                Token = token.Token,
+                Token = accessToken,
                 TipoToken = "Bearer",
-                ExpiracaoEm = token.ExpiracaoEm,
-                RefreshToken = token.RefreshToken,
+                ExpiracaoEm = DateTime.UtcNow.AddSeconds(expiresIn),
+                RefreshToken = refreshToken ?? "",
                 Usuario = new InformacoesUsuario
                 {
-                    Id = usuario.Id,
+                    Id = usuario!.Id,
                     Email = usuario.Email!,
                     Nome = usuario.Nome,
                     Sobrenome = usuario.Sobrenome,
@@ -160,7 +147,7 @@ public class AutenticacaoController : ControllerBase
     [ProducesResponseType(typeof(RespostaToken), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Refresh([FromBody] SolicitacaoRefresh request)
+    public IActionResult Refresh([FromBody] SolicitacaoRefresh request)
     {
         try
         {
@@ -202,15 +189,12 @@ public class AutenticacaoController : ControllerBase
     [HttpPost("logout")]
     [Authorize]
     [ProducesResponseType(typeof(RespostaSucesso), StatusCodes.Status200OK)]
-    public async Task<IActionResult> Logout()
+    public IActionResult Logout() // ✅ Removido async - método síncrono
     {
         try
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            _logger.LogInformation("🚪 Logout do usuário: {UserId}", userId);
-
-            await _signInManager.SignOutAsync();
-
+            // Para logout real, invalidaríamos o token no OpenIddict
+            // Por enquanto, apenas confirmamos o logout
             return Ok(new RespostaSucesso
             {
                 Sucesso = true,
@@ -240,21 +224,38 @@ public class AutenticacaoController : ControllerBase
     {
         try
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            
+            // ✅ CORRIGIR: OpenIddict usa claim "sub" para subject (user ID)
+            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ?? 
+                        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                        User.FindFirstValue("sub");
+
+            _logger.LogInformation("🔍 Obtendo perfil para usuário: {UserId}", userId);
+
             if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out var userIdInt))
             {
-                return Unauthorized();
+                _logger.LogWarning("⚠️ UserId inválido no token");
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "TokenInvalido",
+                    Mensagem = "Token não contém ID de usuário válido"
+                });
             }
 
             var usuario = await _userManager.FindByIdAsync(userId);
             if (usuario == null || !usuario.Ativo)
             {
-                return Unauthorized();
+                _logger.LogWarning("⚠️ Usuário não encontrado ou inativo: {UserId}", userId);
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "UsuarioInvalido",
+                    Mensagem = "Usuário não encontrado ou inativo"
+                });
             }
 
             var papeis = await _userManager.GetRolesAsync(usuario);
-            var permissoes = await ObterPermissoesUsuario(userIdInt);
+            var permissoes = await ObterPermissoesUsuario(usuario.Id);
+
+            _logger.LogInformation("✅ Perfil obtido com sucesso para: {Email}", usuario.Email);
 
             return Ok(new InformacoesUsuario
             {
@@ -284,66 +285,56 @@ public class AutenticacaoController : ControllerBase
     /// </summary>
     /// <returns>Status do token</returns>
     [HttpGet("validar-token")]
+    [Authorize] // ✅ USAR AUTHORIZE ao invés de validação manual
     [ProducesResponseType(typeof(RespostaValidacaoToken), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ValidarToken()
     {
         try
         {
-            // ✅ VALIDAÇÃO TEMPORÁRIA PARA MOCK TOKENS
-            var authHeader = Request.Headers.Authorization.FirstOrDefault();
+            // ✅ CORRIGIR: OpenIddict usa claim "sub" para subject (user ID)
+            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ?? 
+                        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                        User.FindFirstValue("sub");
             
-            if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
-            {
-                return Unauthorized(new RespostaErro
-                {
-                    Erro = "TokenAusente",
-                    Mensagem = "Token de autorização não fornecido"
-                });
-            }
+            var email = User.FindFirstValue(OpenIddictConstants.Claims.Email) ?? 
+                       User.FindFirstValue(ClaimTypes.Email);
+            
+            var name = User.FindFirstValue(OpenIddictConstants.Claims.Name) ?? 
+                      User.FindFirstValue(ClaimTypes.Name);
 
-            var token = authHeader.Substring("Bearer ".Length).Trim();
-            
-            // Validar se é um mock token válido (formato: mock_token_{userId}_{timestamp})
-            if (!token.StartsWith("mock_token_"))
-            {
-                return Unauthorized(new RespostaErro
-                {
-                    Erro = "TokenInvalido",
-                    Mensagem = "Formato de token inválido"
-                });
-            }
+            _logger.LogInformation("🔍 Claims do token - UserId: {UserId}, Email: {Email}, Name: {Name}", 
+                userId, email, name);
 
-            // ✅ CORRIGIDO: Extrair userId do mock token corretamente
-            var tokenParts = token.Split('_');
-            
-            // Debug log para ver as partes do token
-            _logger.LogInformation("🔍 Token parts: {Parts}", string.Join(" | ", tokenParts));
-            
-            // Formato esperado: ["mock", "token", "userId", "timestamp"]
-            if (tokenParts.Length != 4)
+            // ✅ LOG TODOS OS CLAIMS para debug
+            var allClaims = User.Claims.Select(c => new { c.Type, c.Value }).ToList();
+            _logger.LogInformation("🔍 Todos os claims: {@Claims}", allClaims);
+
+            if (string.IsNullOrEmpty(userId))
             {
+                _logger.LogWarning("⚠️ Token válido mas sem claim de usuário");
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "TokenInvalido",
-                    Mensagem = $"Token corrompido - partes: {tokenParts.Length}"
+                    Mensagem = "Token não contém informações válidas do usuário"
                 });
             }
 
-            // ✅ CORRIGIDO: userId está na posição 2 (não 3)
-            if (!int.TryParse(tokenParts[2], out var userId))
+            // ✅ TENTAR CONVERTER PARA INT
+            if (!int.TryParse(userId, out var userIdInt))
             {
+                _logger.LogWarning("⚠️ UserId não é um número válido: {UserId}", userId);
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "TokenInvalido",
-                    Mensagem = $"UserId inválido no token: {tokenParts[2]}"
+                    Mensagem = "Formato de ID de usuário inválido"
                 });
             }
 
-            // Buscar usuário pelo ID extraído do token
-            var usuario = await _userManager.FindByIdAsync(userId.ToString());
+            var usuario = await _userManager.FindByIdAsync(userId);
             if (usuario == null || !usuario.Ativo)
             {
+                _logger.LogWarning("⚠️ Usuário não encontrado ou inativo: {UserId}", userId);
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "UsuarioInvalido",
@@ -354,22 +345,23 @@ public class AutenticacaoController : ControllerBase
             // Obter papéis e permissões
             var papeis = await _userManager.GetRolesAsync(usuario);
             var permissoes = await ObterPermissoesUsuario(usuario.Id);
+            var expiracao = GetTokenExpiration();
 
-            _logger.LogInformation("✅ Token validado para usuário: {Email} (ID: {UserId})", usuario.Email, usuario.Id);
+            _logger.LogInformation("✅ Token validado com sucesso para usuário: {Email}", usuario.Email);
 
             return Ok(new RespostaValidacaoToken
             {
                 Valido = true,
-                UsuarioId = usuario.Id.ToString(),
+                UsuarioId = userId,
                 Email = usuario.Email,
                 Papeis = papeis.ToList(),
                 Permissoes = permissoes,
-                ExpiracaoEm = DateTime.UtcNow.AddHours(1) // Mock expiration
+                ExpiracaoEm = expiracao
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao validar token");
+            _logger.LogError(ex, "❌ Erro durante validação de token");
             return StatusCode(500, new RespostaErro
             {
                 Erro = "ErroInterno",
@@ -379,24 +371,6 @@ public class AutenticacaoController : ControllerBase
     }
 
     #region Métodos Privados
-
-    /// <summary>
-    /// Gera token de acesso para o usuário
-    /// </summary>
-    private async Task<TokenInfo> GerarTokenAcesso(Usuario usuario, IList<string> papeis, List<string> permissoes)
-    {
-        // TODO: Implementar geração de token JWT com OpenIddict
-        // Por enquanto, retornar token mock para desenvolvimento
-        
-        var expiracaoEm = DateTime.UtcNow.AddHours(1);
-        
-        return new TokenInfo
-        {
-            Token = $"mock_token_{usuario.Id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
-            ExpiracaoEm = expiracaoEm,
-            RefreshToken = $"mock_refresh_{usuario.Id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}"
-        };
-    }
 
     /// <summary>
     /// Obtém todas as permissões de um usuário (através dos papéis)
@@ -428,7 +402,10 @@ public class AutenticacaoController : ControllerBase
     /// </summary>
     private DateTime? GetTokenExpiration()
     {
-        var exp = User.FindFirstValue("exp");
+        // ✅ TENTAR DIFERENTES CLAIMS DE EXPIRAÇÃO
+        var exp = User.FindFirstValue("exp") ?? 
+                  User.FindFirstValue(OpenIddictConstants.Claims.ExpiresAt);
+        
         if (long.TryParse(exp, out var expUnix))
         {
             return DateTimeOffset.FromUnixTimeSeconds(expUnix).DateTime;

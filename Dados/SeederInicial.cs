@@ -1,6 +1,7 @@
 using Gestus.Modelos;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using OpenIddict.Abstractions;
 
 namespace Gestus.Dados;
 
@@ -12,6 +13,10 @@ public static class SeederInicial
         var userManager = serviceProvider.GetRequiredService<UserManager<Usuario>>();
         var roleManager = serviceProvider.GetRequiredService<RoleManager<Papel>>();
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+
+        // ✅ ADICIONAR: Gerenciador de aplicações e scopes OpenIddict
+        var applicationManager = serviceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+        var scopeManager = serviceProvider.GetRequiredService<IOpenIddictScopeManager>();
 
         try
         {
@@ -27,23 +32,31 @@ public static class SeederInicial
                 return;
             }
 
-            // 1. Criar os papéis base
+            // 1. Criar scopes OpenIddict PRIMEIRO
+            logger.LogInformation("🔧 Iniciando criação de scopes OpenIddict...");
+            await CriarScopesOpenIddict(scopeManager, logger);
+
+            // 2. Criar aplicações OpenIddict
+            logger.LogInformation("🔧 Iniciando criação de aplicações OpenIddict...");
+            await CriarAplicacoesOpenIddict(applicationManager, logger);
+
+            // 3. Criar os papéis base
             logger.LogInformation("📋 Iniciando criação de papéis...");
             await CriarPapeisBase(roleManager, logger);
 
-            // 2. Criar as permissões base
+            // 4. Criar as permissões base
             logger.LogInformation("🔐 Iniciando criação de permissões...");
             await CriarPermissoesBase(context, logger);
 
-            // 3. Associar permissões aos papéis
+            // 5. Associar permissões aos papéis
             logger.LogInformation("🔗 Iniciando associação de permissões...");
             await AssociarPermissoesAosPapeis(context, roleManager, logger);
 
-            // 4. Criar usuário Super Admin
+            // 6. Criar usuário Super Admin
             logger.LogInformation("👑 Iniciando criação do Super Admin...");
             await CriarSuperAdmin(userManager, logger);
 
-            // 5. Criar grupos base
+            // 7. Criar grupos base
             logger.LogInformation("👥 Iniciando criação de grupos...");
             await CriarGruposBase(context, logger);
 
@@ -58,6 +71,92 @@ public static class SeederInicial
         {
             logger.LogError(ex, "❌ Erro durante a execução do seeder: {Message}", ex.Message);
             throw;
+        }
+    }
+
+    private static async Task CriarAplicacoesOpenIddict(IOpenIddictApplicationManager applicationManager, ILogger logger)
+    {
+        logger.LogInformation("🔧 Criando aplicações OpenIddict...");
+
+        // Aplicação para API (Resource Server)
+        if (await applicationManager.FindByClientIdAsync("gestus_api") == null)
+        {
+            await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
+            {
+                ClientId = "gestus_api",
+                ClientSecret = "gestus_api_secret_2024",
+                ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
+                DisplayName = "Gestus API",
+                ClientType = OpenIddictConstants.ClientTypes.Confidential,
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Token,
+                    OpenIddictConstants.Permissions.Endpoints.Introspection,
+                    OpenIddictConstants.Permissions.GrantTypes.ClientCredentials,
+                    OpenIddictConstants.Permissions.GrantTypes.Password,
+                    OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
+                    
+                    // ✅ CORRIGIDO: Usar scopes que realmente existem
+                    OpenIddictConstants.Permissions.Scopes.Email,
+                    OpenIddictConstants.Permissions.Scopes.Profile,
+                    OpenIddictConstants.Permissions.Scopes.Roles,
+                    // ✅ ADICIONADO: Scope customizado para openid via string
+                    "scp:openid"
+                }
+            });
+
+            logger.LogInformation("✅ Aplicação 'gestus_api' criada no OpenIddict");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Aplicação 'gestus_api' já existe no OpenIddict");
+        }
+
+        // Aplicação para Frontend (SPA)
+        if (await applicationManager.FindByClientIdAsync("gestus_spa") == null)
+        {
+            await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
+            {
+                ClientId = "gestus_spa",
+                ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
+                DisplayName = "Gestus SPA",
+                ClientType = OpenIddictConstants.ClientTypes.Public,
+                PostLogoutRedirectUris =
+                {
+                    new Uri("https://localhost:3000/"),
+                    new Uri("http://localhost:3000/")
+                },
+                RedirectUris =
+                {
+                    new Uri("https://localhost:3000/callback"),
+                    new Uri("http://localhost:3000/callback")
+                },
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Authorization,
+                    OpenIddictConstants.Permissions.Endpoints.Token,
+                    OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
+                    OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
+                    OpenIddictConstants.Permissions.ResponseTypes.Code,
+                    
+                    // ✅ CORRIGIDO: Usar scopes que realmente existem
+                    OpenIddictConstants.Permissions.Scopes.Email,
+                    OpenIddictConstants.Permissions.Scopes.Profile,
+                    OpenIddictConstants.Permissions.Scopes.Roles,
+                    // ✅ ADICIONADO: Scope customizado para openid via string
+                    "scp:openid"
+                },
+                Requirements =
+                {
+                    OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange
+                }
+            });
+
+            logger.LogInformation("✅ Aplicação 'gestus_spa' criada no OpenIddict");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Aplicação 'gestus_spa' já existe no OpenIddict");
         }
     }
 
@@ -83,11 +182,11 @@ public static class SeederInicial
         foreach (var papelInfo in papeisBase)
         {
             logger.LogInformation($"📋 Verificando papel: {papelInfo.Nome}");
-            
+
             if (!await roleManager.RoleExistsAsync(papelInfo.Nome))
             {
                 logger.LogInformation($"📋 Criando papel: {papelInfo.Nome}");
-                
+
                 var papel = new Papel
                 {
                     Name = papelInfo.Nome,
@@ -352,6 +451,74 @@ public static class SeederInicial
         }
 
         logger.LogInformation($"🔗 Permissões associadas ao papel '{nomePapel}': {permissoes.Count}");
+    }
+
+    private static async Task CriarScopesOpenIddict(IOpenIddictScopeManager scopeManager, ILogger logger)
+    {
+        logger.LogInformation("🔧 Criando scopes OpenIddict...");
+
+        // Scope profile
+        if (await scopeManager.FindByNameAsync("profile") == null)
+        {
+            await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
+            {
+                Name = "profile",
+                DisplayName = "Profile",
+                Description = "Acesso às informações básicas do perfil do usuário",
+                Resources =
+                {
+                    "gestus_api"
+                }
+            });
+
+            logger.LogInformation("✅ Scope 'profile' criado no OpenIddict");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Scope 'profile' já existe no OpenIddict");
+        }
+
+        // Scope email
+        if (await scopeManager.FindByNameAsync("email") == null)
+        {
+            await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
+            {
+                Name = "email",
+                DisplayName = "Email",
+                Description = "Acesso ao endereço de email do usuário",
+                Resources =
+                {
+                    "gestus_api"
+                }
+            });
+
+            logger.LogInformation("✅ Scope 'email' criado no OpenIddict");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Scope 'email' já existe no OpenIddict");
+        }
+
+        // Scope roles
+        if (await scopeManager.FindByNameAsync("roles") == null)
+        {
+            await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
+            {
+                Name = "roles",
+                DisplayName = "Roles",
+                Description = "Acesso aos papéis e permissões do usuário",
+                Resources =
+                {
+                    "gestus_api"
+                }
+            });
+
+            logger.LogInformation("✅ Scope 'roles' criado no OpenIddict");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Scope 'roles' já existe no OpenIddict");
+        }
     }
 
     private static async Task CriarGruposBase(GestusDbContexto context, ILogger logger)

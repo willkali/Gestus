@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Http.Resilience;
 using System.Reflection;
+using Gestus.Services;
 
 namespace Gestus;
 
@@ -26,6 +27,9 @@ public static class Inicializacao
 
         // Entity Framework e Identity
         services.AdicionarEntityFramework(configuration);
+
+        // ✅ ADICIONAR: Serviço de timezone
+        services.AddScoped<ITimezoneService, TimezoneService>();
 
         // Controllers e API
         services.AddControllers()

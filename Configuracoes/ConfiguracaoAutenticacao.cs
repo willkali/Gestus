@@ -1,6 +1,8 @@
 using Gestus.Dados;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using OpenIddict.Validation.AspNetCore; // ✅ ADICIONAR
 
 namespace Gestus.Configuracoes;
 
@@ -30,29 +32,27 @@ public static class ConfiguracaoAutenticacao
                 // Configurar fluxos permitidos
                 options.AllowClientCredentialsFlow()
                        .AllowAuthorizationCodeFlow()
-                       .AllowRefreshTokenFlow();
+                       .AllowRefreshTokenFlow()
+                       .AllowPasswordFlow();
 
-                // Configurar chaves de desenvolvimento (apenas para desenvolvimento)
+                // ✅ CERTIFICADOS PARA DESENVOLVIMENTO
                 options.AddDevelopmentEncryptionCertificate()
                        .AddDevelopmentSigningCertificate();
 
-                // Configurar tempos de vida dos tokens
-                var accessTokenLifetime = serverConfig.GetValue<string>("AccessTokenLifetime");
-                if (TimeSpan.TryParse(accessTokenLifetime, out var accessLifetime))
+                // ✅ PERMITIR HTTP EM DESENVOLVIMENTO
+                if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
                 {
-                    options.SetAccessTokenLifetime(accessLifetime);
+                    options.DisableAccessTokenEncryption();
                 }
 
-                var refreshTokenLifetime = serverConfig.GetValue<string>("RefreshTokenLifetime");
-                if (TimeSpan.TryParse(refreshTokenLifetime, out var refreshLifetime))
-                {
-                    options.SetRefreshTokenLifetime(refreshLifetime);
-                }
+                // ✅ CONFIGURAR TEMPOS
+                options.SetAccessTokenLifetime(TimeSpan.FromMinutes(60));
+                options.SetRefreshTokenLifetime(TimeSpan.FromDays(7));
 
-                // Usar ASP.NET Core hosting
                 options.UseAspNetCore()
                        .EnableTokenEndpointPassthrough()
-                       .EnableAuthorizationEndpointPassthrough();
+                       .EnableAuthorizationEndpointPassthrough()
+                       .DisableTransportSecurityRequirement();
             })
             .AddValidation(options =>
             {
@@ -60,74 +60,12 @@ public static class ConfiguracaoAutenticacao
                 options.UseAspNetCore();
             });
 
-        // ✅ CONFIGURAR AUTHENTICATION COM ESQUEMA PADRÃO
+        // ✅ USAR APENAS OPENIDDICT VALIDATION (remover JWT Bearer)
         services.AddAuthentication(options =>
         {
-            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-        })
-        .AddJwtBearer(options =>
-        {
-            options.Authority = configuration["OpenIddict:Server:Issuer"];
-            options.Audience = "gestus_api";
-            options.RequireHttpsMetadata = false; // Apenas para desenvolvimento
-            
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = false, // ✅ Desabilitar para mock tokens
-                ValidateAudience = false, // ✅ Desabilitar para mock tokens
-                ValidateLifetime = false, // ✅ Desabilitar para mock tokens
-                ValidateIssuerSigningKey = false, // ✅ Desabilitar para mock tokens
-                ClockSkew = TimeSpan.Zero
-            };
-
-            // ✅ CONFIGURAR EVENTOS PARA API (retornar JSON ao invés de redirect)
-            options.Events = new JwtBearerEvents
-            {
-                OnChallenge = context =>
-                {
-                    // Não fazer redirect, retornar 401 direto
-                    context.HandleResponse();
-                    
-                    if (!context.Response.HasStarted)
-                    {
-                        context.Response.StatusCode = 401;
-                        context.Response.ContentType = "application/json";
-                        
-                        var response = new
-                        {
-                            erro = "TokenInvalido",
-                            mensagem = "Token de acesso inválido ou ausente",
-                            statusCode = 401
-                        };
-                        
-                        return context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
-                    }
-                    
-                    return Task.CompletedTask;
-                },
-                
-                OnForbidden = context =>
-                {
-                    if (!context.Response.HasStarted)
-                    {
-                        context.Response.StatusCode = 403;
-                        context.Response.ContentType = "application/json";
-                        
-                        var response = new
-                        {
-                            erro = "AcessoNegado",
-                            mensagem = "Acesso negado. Permissões insuficientes",
-                            statusCode = 403
-                        };
-                        
-                        return context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
-                    }
-                    
-                    return Task.CompletedTask;
-                }
-            };
+            options.DefaultAuthenticateScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+            options.DefaultScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
         });
 
         return services;
