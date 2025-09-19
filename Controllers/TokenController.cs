@@ -233,58 +233,50 @@ public class TokenController : ControllerBase
         _logger.LogInformation("🕐 Token criado em - UTC: {Utc}, Timezone: {Timezone}", 
             currentUtc, systemTimezone);
 
-        // Claims básicos do usuário
+        // ✅ ADICIONAR AMBOS OS CLAIMS PARA COMPATIBILIDADE
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Subject, usuario.Id.ToString()));
+        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString())); // ✅ ADICIONAR
+
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Name, usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}"));
-        identity.AddClaim(new Claim(OpenIddictConstants.Claims.PreferredUsername, usuario.UserName!));
+        identity.AddClaim(new Claim(OpenIddictConstants.Claims.PreferredUsername, usuario.Email!));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Email, usuario.Email!));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.EmailVerified, usuario.EmailConfirmed.ToString().ToLower()));
-
-        // ✅ ADICIONAR: Audience explícito para validação JWT
-        identity.AddClaim(new Claim(OpenIddictConstants.Claims.Audience, "gestus_api"));
 
         // Claims personalizados
         identity.AddClaim(new Claim("nome", usuario.Nome));
         identity.AddClaim(new Claim("sobrenome", usuario.Sobrenome));
-        
-        // ✅ USAR HORÁRIO REAL
-        var ultimoLogin = usuario.UltimoLogin ?? currentUtc;
-        identity.AddClaim(new Claim("ultimo_login", ultimoLogin.ToString("yyyy-MM-ddTHH:mm:ssZ")));
-
-        // ✅ TIMEZONE INFO
+        identity.AddClaim(new Claim("ultimo_login", currentUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")));
         identity.AddClaim(new Claim("timezone", systemTimezone));
+        
         var offset = TimeZoneInfo.Local.GetUtcOffset(DateTime.Now);
-        identity.AddClaim(new Claim("utc_offset", offset.ToString()));
+        identity.AddClaim(new Claim("utc_offset", offset.ToString(@"hh\:mm\:ss")));
 
-        // Papéis do usuário
+        // Obter papéis do usuário
         var papeis = await _userManager.GetRolesAsync(usuario);
         foreach (var papel in papeis)
         {
             identity.AddClaim(new Claim(OpenIddictConstants.Claims.Role, papel));
         }
 
+        // Obter permissões através dos papéis
         var permissoes = await ObterPermissoesUsuario(usuario.Id);
         foreach (var permissao in permissoes)
         {
             identity.AddClaim(new Claim("permissao", permissao));
         }
 
-        // ✅ DEFINIR SCOPES E RECURSOS (audience)
-        identity.SetScopes(new[]
-        {
-            OpenIddictConstants.Scopes.OpenId,
-            OpenIddictConstants.Scopes.Email,
-            OpenIddictConstants.Scopes.Profile,
-            OpenIddictConstants.Scopes.Roles
-        }.ToImmutableArray());
+        // Configurar audiência
+        identity.AddClaim(new Claim(OpenIddictConstants.Claims.Audience, "gestus_api"));
 
-        // ✅ ADICIONAR: Definir recursos/audiences explicitamente
-        identity.SetResources(new[]
-        {
-            "gestus_api"
-        }.ToImmutableArray());
+        // ✅ ATUALIZAR ÚLTIMO LOGIN
+        usuario.UltimoLogin = currentUtc;
+        await _userManager.UpdateAsync(usuario);
 
-        identity.SetDestinations(GetDestinations);
+        // Configurar destinos dos claims
+        foreach (var claim in identity.Claims)
+        {
+            claim.SetDestinations(GetDestinations(claim));
+        }
 
         return identity;
     }
