@@ -19,6 +19,7 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
     public DbSet<UsuarioGrupo> UsuarioGrupos => Set<UsuarioGrupo>();
     public DbSet<RegistroAuditoria> RegistrosAuditoria => Set<RegistroAuditoria>();
     public DbSet<UsuarioPapel> UsuarioPapeis => Set<UsuarioPapel>();
+    public DbSet<Papel> Papeis => Set<Papel>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
