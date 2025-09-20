@@ -28,4 +28,14 @@ public abstract class FiltrosBase
     /// Direção da ordenação (asc/desc)
     /// </summary>
     public string? DirecaoOrdenacao { get; set; } = "asc";
+
+    /// <summary>
+    /// Termo de busca geral (opcional)
+    /// </summary>
+    public string? TermoBusca { get; set; }
+
+    /// <summary>
+    /// Incluir registros inativos/removidos
+    /// </summary>
+    public bool IncluirInativos { get; set; } = false;
 }

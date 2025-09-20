@@ -1102,7 +1102,7 @@ public class UsuariosController : ControllerBase
                         AtribuidoPorId = up.AtribuidoPorId,
                         Permissoes = up.Papel.PapelPermissoes
                             .Where(pp => pp.Ativo && pp.Permissao.Ativo)
-                            .Select(pp => new PermissaoResumo
+                            .Select(pp => new DTOs.Permissao.PermissaoResumo
                             {
                                 Id = pp.Permissao.Id,
                                 Nome = pp.Permissao.Nome,
@@ -1213,7 +1213,7 @@ public class UsuariosController : ControllerBase
                     TotalPermissoes = r.PapelPermissoes.Count(pp => pp.Ativo && pp.Permissao.Ativo),
                     Permissoes = r.PapelPermissoes
                         .Where(pp => pp.Ativo && pp.Permissao.Ativo)
-                        .Select(pp => new PermissaoResumo
+                        .Select(pp => new DTOs.Permissao.PermissaoResumo
                         {
                             Id = pp.Permissao.Id,
                             Nome = pp.Permissao.Nome,

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Gestus.DTOs.Permissao;
 
 namespace Gestus.DTOs.Usuario;
 
@@ -65,17 +66,6 @@ public class PapelDisponivel
     public int Nivel { get; set; }
     public int TotalPermissoes { get; set; }
     public List<PermissaoResumo> Permissoes { get; set; } = new();
-}
-
-/// <summary>
-/// Permissão resumida
-/// </summary>
-public class PermissaoResumo
-{
-    public int Id { get; set; }
-    public string Nome { get; set; } = string.Empty;
-    public string Descricao { get; set; } = string.Empty;
-    public string? Categoria { get; set; }
 }
 
 /// <summary>

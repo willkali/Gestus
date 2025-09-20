@@ -8,7 +8,7 @@ public class RespostaSucesso
     /// <summary>
     /// Indica se a operação foi bem-sucedida
     /// </summary>
-    public bool Sucesso { get; set; }
+    public bool Sucesso { get; set; } = true;
 
     /// <summary>
     /// Mensagem de sucesso
@@ -24,4 +24,13 @@ public class RespostaSucesso
     /// Data e hora da operação
     /// </summary>
     public DateTime DataOperacao { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Timestamp da operação (alias para compatibilidade)
+    /// </summary>
+    public DateTime Timestamp 
+    { 
+        get => DataOperacao; 
+        set => DataOperacao = value; 
+    }
 }
