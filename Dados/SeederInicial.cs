@@ -336,6 +336,7 @@ public static class SeederInicial
             new { Nome = "Papeis.Visualizar", Descricao = "Visualizar detalhes de papéis", Recurso = "Papeis", Acao = "Visualizar", Categoria = "Papeis" },
             new { Nome = "Papeis.Editar", Descricao = "Editar papéis", Recurso = "Papeis", Acao = "Editar", Categoria = "Papeis" },
             new { Nome = "Papeis.Excluir", Descricao = "Excluir papéis", Recurso = "Papeis", Acao = "Excluir", Categoria = "Papeis" },
+            new { Nome = "Papeis.GerenciarPermissoes", Descricao = "Gerenciar permissões de papéis", Recurso = "Papeis", Acao = "GerenciarPermissoes", Categoria = "Papeis" },
             
             // Permissões de Permissões
             new { Nome = "Permissoes.Criar", Descricao = "Criar novas permissões", Recurso = "Permissoes", Acao = "Criar", Categoria = "Permissoes" },
@@ -424,6 +425,48 @@ public static class SeederInicial
                 .Where(p => p.Categoria == "Usuarios" || p.Categoria == "Grupos")
                 .ToListAsync();
             await AssociarPermissoesAoPapel(context, usuarioPapel.Id, permissoesUsuario, logger, "Usuario");
+        }
+
+        // GestorUsuarios: Todas as permissões relacionadas a usuários
+        var gestorUsuariosPapel = await roleManager.FindByNameAsync("GestorUsuarios");
+        if (gestorUsuariosPapel != null)
+        {
+            var permissoesGestorUsuarios = await context.Permissoes
+                .Where(p => p.Categoria == "Usuarios")
+                .ToListAsync();
+            await AssociarPermissoesAoPapel(context, gestorUsuariosPapel.Id, permissoesGestorUsuarios, logger, "GestorUsuarios");
+        }
+        else
+        {
+            logger.LogWarning("⚠️  Papel GestorUsuarios não encontrado para associar permissões");
+        }
+
+        // GestorPermissoes: Permissões para gerenciar papéis e permissões
+        var gestorPermissoesPapel = await roleManager.FindByNameAsync("GestorPermissoes");
+        if (gestorPermissoesPapel != null)
+        {
+            var permissoesGestorPermissoes = await context.Permissoes
+                .Where(p => p.Categoria == "Papeis" || p.Categoria == "Permissoes")
+                .ToListAsync();
+            await AssociarPermissoesAoPapel(context, gestorPermissoesPapel.Id, permissoesGestorPermissoes, logger, "GestorPermissoes");
+        }
+        else
+        {
+            logger.LogWarning("⚠️  Papel GestorPermissoes não encontrado para associar permissões");
+        }
+
+        // Auditor: Apenas permissões de visualização e auditoria
+        var auditorPapel = await roleManager.FindByNameAsync("Auditor");
+        if (auditorPapel != null)
+        {
+            var permissoesAuditor = await context.Permissoes
+                .Where(p => p.Acao == "Visualizar" || p.Acao == "Listar" || p.Categoria == "Auditoria")
+                .ToListAsync();
+            await AssociarPermissoesAoPapel(context, auditorPapel.Id, permissoesAuditor, logger, "Auditor");
+        }
+        else
+        {
+            logger.LogWarning("⚠️  Papel Auditor não encontrado para associar permissões");
         }
 
         await context.SaveChangesAsync();

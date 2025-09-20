@@ -4,6 +4,19 @@ namespace Gestus.Modelos;
 
 public class UsuarioPapel : IdentityUserRole<int>
 {
+    // ✅ PROPRIEDADES DE COMPATIBILIDADE
+    public int PapelId 
+    { 
+        get => RoleId; 
+        set => RoleId = value; 
+    }
+
+    public int UsuarioId 
+    { 
+        get => UserId; 
+        set => UserId = value; 
+    }
+
     public DateTime DataAtribuicao { get; set; } = DateTime.UtcNow;
     public DateTime? DataExpiracao { get; set; }
     public bool Ativo { get; set; } = true;

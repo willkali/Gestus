@@ -18,6 +18,7 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
     public DbSet<Grupo> Grupos => Set<Grupo>();
     public DbSet<UsuarioGrupo> UsuarioGrupos => Set<UsuarioGrupo>();
     public DbSet<RegistroAuditoria> RegistrosAuditoria => Set<RegistroAuditoria>();
+    public DbSet<UsuarioPapel> UsuarioPapeis => Set<UsuarioPapel>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -134,14 +135,14 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
             entity.Property(e => e.DataAtribuicao).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(pp => pp.Papel)
-                  .WithMany(p => p.PapelPermissoes)
-                  .HasForeignKey(pp => pp.PapelId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(p => p.PapelPermissoes)
+                .HasForeignKey(pp => pp.PapelId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(pp => pp.Permissao)
-                  .WithMany(p => p.PapelPermissoes)
-                  .HasForeignKey(pp => pp.PermissaoId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(p => p.PapelPermissoes)
+                .HasForeignKey(pp => pp.PermissaoId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // UsuarioGrupo (many-to-many)
@@ -152,44 +153,44 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
             entity.Property(e => e.DataAdesao).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(ug => ug.Usuario)
-                  .WithMany(u => u.UsuarioGrupos)
-                  .HasForeignKey(ug => ug.UsuarioId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(u => u.UsuarioGrupos)
+                .HasForeignKey(ug => ug.UsuarioId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(ug => ug.Grupo)
-                  .WithMany(g => g.UsuarioGrupos)
-                  .HasForeignKey(ug => ug.GrupoId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(g => g.UsuarioGrupos)
+                .HasForeignKey(ug => ug.GrupoId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // UsuarioPapel (estendido do Identity)
+        // ✅ CORRIGIDO: UsuarioPapel - usar propriedades do Identity
         builder.Entity<UsuarioPapel>(entity =>
         {
             entity.Property(e => e.DataAtribuicao).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(up => up.Usuario)
-                  .WithMany(u => u.UsuarioPapeis)
-                  .HasForeignKey(up => up.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(u => u.UsuarioPapeis)
+                .HasForeignKey(up => up.UserId) // ✅ UserId (do Identity)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(up => up.Papel)
-                  .WithMany(p => p.UsuarioPapeis)
-                  .HasForeignKey(up => up.RoleId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(p => p.UsuarioPapeis)
+                .HasForeignKey(up => up.RoleId) // ✅ RoleId (do Identity)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(up => up.AtribuidoPor)
-                  .WithMany()
-                  .HasForeignKey(up => up.AtribuidoPorId)
-                  .OnDelete(DeleteBehavior.SetNull);
+                .WithMany()
+                .HasForeignKey(up => up.AtribuidoPorId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // RegistroAuditoria -> Usuario
         builder.Entity<RegistroAuditoria>(entity =>
         {
             entity.HasOne(ra => ra.Usuario)
-                  .WithMany(u => u.RegistrosAuditoria)
-                  .HasForeignKey(ra => ra.UsuarioId)
-                  .OnDelete(DeleteBehavior.SetNull);
+                .WithMany(u => u.RegistrosAuditoria)
+                .HasForeignKey(ra => ra.UsuarioId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 

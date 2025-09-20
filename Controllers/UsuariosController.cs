@@ -1959,7 +1959,7 @@ public class UsuariosController : ControllerBase
                 {
                     var papelEntity = await _roleManager.FindByNameAsync(papel);
                     var usuarioPapel = await _context.Set<UsuarioPapel>()
-                        .FirstOrDefaultAsync(up => up.UserId == usuario.Id && up.RoleId == papelEntity!.Id);
+                        .FirstOrDefaultAsync(up => up.UserId == usuario.Id && up.PapelId == papelEntity!.Id);
 
                     if (usuarioPapel != null)
                     {
