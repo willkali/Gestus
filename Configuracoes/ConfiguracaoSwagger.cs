@@ -102,32 +102,63 @@ public static class ConfiguracaoSwagger
     {
         try
         {
-            // ✅ CASO 1: Tipos não genéricos simples
             if (!type.IsGenericType && !type.IsNested)
             {
-                return LimparNomeClasse(type.Name);
+                // ✅ CORRIGIDO: Incluir namespace para evitar conflitos
+                return IncluirNamespaceSeNecessario(type);
             }
 
-            // ✅ CASO 2: Tipos genéricos (ex: RespostaPaginada<T>, List<T>)
             if (type.IsGenericType)
             {
                 return GerarSchemaIdGenerico(type);
             }
 
-            // ✅ CASO 3: Tipos aninhados (nested classes)
             if (type.IsNested)
             {
                 return GerarSchemaIdAninhado(type);
             }
 
-            // ✅ FALLBACK: Usar nome completo limpo
             return LimparNomeCompleto(type.FullName ?? type.Name);
         }
         catch (Exception)
         {
-            // ✅ FALLBACK FINAL: Nome da classe + hash do assembly
-            return $"{type.Name}_{type.Assembly.GetHashCode():X8}";
+            // Fallback seguro
+            return LimparNomeCompleto(type.FullName ?? type.Name ?? "Unknown");
         }
+    }
+
+    /// <summary>
+    /// Inclui namespace quando necessário para evitar conflitos
+    /// </summary>
+    private static string IncluirNamespaceSeNecessario(Type type)
+    {
+        var nomeSimples = LimparNomeClasse(type.Name);
+        
+        // Lista de nomes que podem gerar conflito
+        var nomesConflitantes = new[]
+        {
+            "EstatisticasBusca",
+            "RespostaBuscaAvancada", 
+            "FiltrosBase",
+            "RespostaPaginada",
+            "RespostaSucesso",
+            "RespostaErro"
+        };
+
+        // Se é um nome que pode gerar conflito, incluir parte do namespace
+        if (nomesConflitantes.Contains(nomeSimples))
+        {
+            var namespaceParts = type.Namespace?.Split('.') ?? new[] { "Unknown" };
+            
+            // Pegar a última parte relevante do namespace
+            if (namespaceParts.Length >= 2)
+            {
+                var categoria = namespaceParts[namespaceParts.Length - 1]; // Ex: "Grupo", "Usuario"
+                return $"{categoria}{nomeSimples}"; // Ex: "GrupoEstatisticasBusca"
+            }
+        }
+
+        return nomeSimples;
     }
 
     /// <summary>
@@ -142,6 +173,9 @@ public static class ConfiguracaoSwagger
         {
             nomeBase = nomeBase.Substring(0, nomeBase.IndexOf('`'));
         }
+
+        // ✅ CORRIGIDO: Incluir namespace se necessário para genéricos também
+        nomeBase = IncluirNamespaceSeNecessario(type.GetGenericTypeDefinition());
 
         // Obter argumentos genéricos
         var argumentosGenericos = type.GetGenericArguments();
@@ -158,18 +192,17 @@ public static class ConfiguracaoSwagger
 
         for (int i = 0; i < argumentosGenericos.Length; i++)
         {
-            if (i > 0) sb.Append("And");
-            
+            if (i > 0)
+                sb.Append("And");
+
             var argumento = argumentosGenericos[i];
-            
-            // Recursão para argumentos genéricos aninhados
             if (argumento.IsGenericType)
             {
                 sb.Append(GerarSchemaIdGenerico(argumento));
             }
             else
             {
-                sb.Append(LimparNomeClasse(argumento.Name));
+                sb.Append(IncluirNamespaceSeNecessario(argumento));
             }
         }
 
