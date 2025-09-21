@@ -182,6 +182,12 @@ public static class Inicializacao
             logger.LogInformation("🌱 Executando seeder inicial...");
             await SeederInicial.ExecutarAsync(scope.ServiceProvider);
 
+            // ✅ ADICIONAR: Inicializar templates padrão
+            logger.LogInformation("📧 Inicializando templates de email padrão...");
+            var templateService = scope.ServiceProvider.GetRequiredService<ITemplateService>();
+            await templateService.InicializarTemplatesPadraoAsync();
+            logger.LogInformation("✅ Templates de email inicializados com sucesso");
+
             logger.LogInformation("✅ Inicialização do banco concluída com sucesso.");
         }
         catch (Exception ex)

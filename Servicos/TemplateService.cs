@@ -504,13 +504,19 @@ public class TemplateService : ITemplateService
                 Tipo = tipo,
                 Assunto = ObterAssuntoPadrao(tipo),
                 CorpoHtml = ObterCorpoHtmlPadrao(tipo),
-                CorpoTexto = ObterCorpoTextoPadrao(tipo)
+                CorpoTexto = ObterCorpoTextoPadrao(tipo),
+                Ativo = true, // ✅ ADICIONAR ESTA LINHA
+                DataCriacao = DateTime.UtcNow // ✅ ADICIONAR ESTA LINHA TAMBÉM
             };
 
             _context.Set<TemplateEmail>().Add(template);
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("✅ Template padrão criado - Tipo: {Tipo}", tipo);
+        }
+        else
+        {
+            _logger.LogInformation("⚠️ Template padrão já existe - Tipo: {Tipo}", tipo);
         }
     }
 
@@ -559,15 +565,15 @@ public class TemplateService : ITemplateService
     }
 
     private string ObterAssuntoPadrao(string tipo)
+{
+    return tipo switch
     {
-        return tipo switch
-        {
-            "RecuperarSenha" => "🔐 {NomeSistema} - Recuperação de Senha",
-            "BoasVindas" => "🎉 Bem-vindo(a) ao {NomeSistema}!",
-            "ConfirmarEmail" => "📧 {NomeSistema} - Confirme seu endereço de email",
-            _ => $"{tipo} - {{NomeSistema}}"
-        };
-    }
+        "BoasVindas" => "Bem-vindo(a) ao {NomeSistema}!",
+        "RecuperarSenha" => "Recuperação de Senha - {NomeSistema}",
+        "ConfirmarEmail" => "Confirme seu email - {NomeSistema}",
+        _ => $"Notificação - {tipo}"
+    };
+}
 
     private string ObterCorpoHtmlPadrao(string tipo)
     {

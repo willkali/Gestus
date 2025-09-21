@@ -2,9 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Gestus.DTOs.Sistema;
 
-/// <summary>
-/// Resposta da configuração de email
-/// </summary>
 public class ConfiguracaoEmailResponse
 {
     public int Id { get; set; }
@@ -17,6 +14,9 @@ public class ConfiguracaoEmailResponse
     public bool UsarAutenticacao { get; set; }
     public string? EmailResposta { get; set; }
     public string? EmailCopia { get; set; }
+    
+    public string? EmailCopiaOculta { get; set; }
+    
     public bool Ativo { get; set; }
     public DateTime DataCriacao { get; set; }
     public DateTime? DataAtualizacao { get; set; }

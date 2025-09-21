@@ -29,19 +29,22 @@ public class UsuariosController : ControllerBase
     private readonly GestusDbContexto _context;
     private readonly ILogger<UsuariosController> _logger;
     private readonly IArquivoService _arquivoService;
+    private readonly IEmailService _emailService;
 
     public UsuariosController(
         UserManager<Usuario> userManager,
         RoleManager<Papel> roleManager,
         GestusDbContexto context,
         ILogger<UsuariosController> logger,
-        IArquivoService arquivoService)
+        IArquivoService arquivoService,
+        IEmailService emailService)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _context = context;
         _logger = logger;
         _arquivoService = arquivoService;
+        _emailService = emailService;
     }
 
     /// <summary>
@@ -293,120 +296,137 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.Criar"))
             {
-                return Forbid();
+                return Forbid("Acesso negado para criar usuários");
             }
 
+            // ✅ VALIDAÇÃO CORRIGIDA - passar UserManager
             var validator = new CriarUsuarioValidator(_userManager);
             var validationResult = await validator.ValidateAsync(request);
             if (!validationResult.IsValid)
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "Dados inválidos", 
-                    Mensagem = "Os dados fornecidos são inválidos",
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "DadosInvalidos",
+                    Mensagem = "Dados fornecidos são inválidos",
                     Detalhes = validationResult.Errors.Select(e => e.ErrorMessage).ToList()
                 });
             }
 
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            _logger.LogInformation($"👤 Criando usuário: {request.Email} - Solicitado por: {usuarioLogadoId}");
 
-            // ✅ CORRIGIDO: Usar ExecutionStrategy para transações
-            var strategy = _context.Database.CreateExecutionStrategy();
-            var resultado = await strategy.ExecuteAsync(async () =>
+            // Verificar se email já existe
+            var usuarioExistente = await _userManager.FindByEmailAsync(request.Email);
+            if (usuarioExistente != null)
             {
-                using var transaction = await _context.Database.BeginTransactionAsync();
-                try
+                return BadRequest(new RespostaErro
                 {
-                    // Criar usuário
-                    var usuario = new Usuario
-                    {
-                        UserName = request.Email,
-                        Email = request.Email,
-                        Nome = request.Nome,
-                        Sobrenome = request.Sobrenome,
-                        NomeCompleto = $"{request.Nome} {request.Sobrenome}",
-                        PhoneNumber = request.Telefone,
-                        EmailConfirmed = request.ConfirmarEmailImediatamente,
-                        PhoneNumberConfirmed = request.ConfirmarTelefoneImediatamente,
-                        Ativo = request.Ativo,
-                        Observacoes = request.Observacoes,
-                        DataCriacao = DateTime.UtcNow
-                    };
+                    Erro = "EmailJaExiste",
+                    Mensagem = "Este endereço de email já está em uso"
+                });
+            }
 
-                    var resultadoCriacao = await _userManager.CreateAsync(usuario, request.Senha);
-                    if (!resultadoCriacao.Succeeded)
-                    {
-                        throw new InvalidOperationException($"Erro ao criar usuário: {string.Join(", ", resultadoCriacao.Errors.Select(e => e.Description))}");
-                    }
+            // Criar usuário
+            var usuario = new Usuario
+            {
+                Email = request.Email,
+                UserName = request.Email,
+                Nome = request.Nome,
+                Sobrenome = request.Sobrenome,
+                NomeCompleto = $"{request.Nome} {request.Sobrenome}",
+                PhoneNumber = request.Telefone,
+                EmailConfirmed = request.ConfirmarEmailImediatamente,
+                PhoneNumberConfirmed = request.ConfirmarTelefoneImediatamente,
+                Ativo = request.Ativo,
+                DataCriacao = DateTime.UtcNow,
+                Observacoes = request.Observacoes
+            };
 
-                    // Atribuir papéis se fornecidos
-                    if (request.Papeis?.Any() == true)
-                    {
-                        var papeisValidos = new List<string>();
-                        foreach (var papel in request.Papeis)
-                        {
-                            if (await _roleManager.RoleExistsAsync(papel))
-                            {
-                                papeisValidos.Add(papel);
-                            }
-                        }
-
-                        if (papeisValidos.Any())
-                        {
-                            await _userManager.AddToRolesAsync(usuario, papeisValidos);
-                        }
-                    }
-
-                    // Registrar auditoria
-                    var dadosAuditoria = JsonSerializer.Serialize(new
-                    {
-                        usuario.Email,
-                        usuario.Nome,
-                        usuario.Sobrenome,
-                        usuario.Ativo,
-                        Papeis = request.Papeis ?? new List<string>()
-                    });
-
-                    var registroAuditoria = new RegistroAuditoria
-                    {
-                        UsuarioId = usuarioLogadoId,
-                        Acao = "Criar",
-                        Recurso = "Usuario",
-                        RecursoId = usuario.Id.ToString(),
-                        DadosDepois = dadosAuditoria,
-                        DataHora = DateTime.UtcNow,
-                        EnderecoIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                        UserAgent = Request.Headers.UserAgent.ToString(),
-                        Observacoes = $"Usuário {usuario.Email} criado"
-                    };
-
-                    _context.RegistrosAuditoria.Add(registroAuditoria);
-                    await _context.SaveChangesAsync();
-
-                    await transaction.CommitAsync();
-
-                    _logger.LogInformation($"✅ Usuário criado com sucesso: {usuario.Email} (ID: {usuario.Id})");
-
-                    return usuario;
-                }
-                catch
+            var resultado = await _userManager.CreateAsync(usuario, request.Senha);
+            if (!resultado.Succeeded)
+            {
+                return BadRequest(new RespostaErro
                 {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
-            });
+                    Erro = "ErroCreacion",
+                    Mensagem = "Erro ao criar usuário",
+                    Detalhes = resultado.Errors.Select(e => e.Description).ToList()
+                });
+            }
 
-            var usuarioCompleto = await ObterUsuarioCompletoAsync(resultado.Id);
-            return CreatedAtAction(nameof(ObterUsuario), new { id = resultado.Id }, usuarioCompleto);
+            // Atribuir papéis se especificados
+            if (request.Papeis?.Any() == true)
+            {
+                var papeisValidos = await _roleManager.Roles
+                    .Where(r => request.Papeis.Contains(r.Name!) && r.Ativo)
+                    .Select(r => r.Name!)
+                    .ToListAsync();
+
+                if (papeisValidos.Any())
+                {
+                    await _userManager.AddToRolesAsync(usuario, papeisValidos);
+                    await AtualizarMetadadosPapeis(usuario.Id, papeisValidos, usuarioLogadoId);
+                }
+            }
+
+            // ✅ DECLARAR VARIÁVEL FORA DO TRY PARA USAR NA AUDITORIA
+            bool emailEnviado = false;
+
+            // ✅ ENVIO DE EMAIL DE BOAS-VINDAS
+            try
+            {
+                emailEnviado = await _emailService.EnviarEmailBoasVindasAsync(
+                    emailDestino: usuario.Email!,
+                    nomeUsuario: usuario.Nome
+                );
+
+                if (emailEnviado)
+                {
+                    _logger.LogInformation("✅ Email de boas-vindas enviado para {Email}", usuario.Email);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Falha ao enviar email de boas-vindas para {Email}", usuario.Email);
+                }
+            }
+            catch (Exception emailEx)
+            {
+                _logger.LogError(emailEx, "❌ Erro ao enviar email de boas-vindas para {Email}", usuario.Email);
+                // Não falha a criação do usuário por causa do email
+                emailEnviado = false;
+            }
+
+            // Registrar auditoria
+            await RegistrarAuditoria(
+                acao: "Criar",
+                recurso: "Usuario",
+                recursoId: usuario.Id.ToString(),
+                observacoes: $"Usuário {usuario.Email} criado com sucesso",
+                dadosAntes: null,
+                dadosDepois: new
+                {
+                    usuario.Id,
+                    usuario.Email,
+                    usuario.Nome,
+                    usuario.Sobrenome,
+                    Papeis = request.Papeis,
+                    EmailEnviado = emailEnviado // ✅ AGORA A VARIÁVEL ESTÁ NO ESCOPO CORRETO
+                }
+            );
+
+            var usuarioCompleto = await ObterUsuarioCompletoAsync(usuario.Id);
+
+            return CreatedAtAction(
+                nameof(ObterUsuario),
+                new { id = usuario.Id },
+                usuarioCompleto
+            );
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"❌ Erro ao criar usuário: {request.Email}");
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "Erro interno", 
-                Mensagem = "Erro ao criar usuário" 
+            _logger.LogError(ex, "❌ Erro ao criar usuário");
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }

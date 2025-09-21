@@ -22,48 +22,30 @@ public static class SeederInicial
         {
             logger.LogInformation("🌱 Iniciando seeder de dados iniciais...");
 
-            // Verificar conexão
+            // Verificar conexão com banco
             var canConnect = await context.Database.CanConnectAsync();
-            logger.LogInformation($"📊 Conexão com banco: {(canConnect ? "OK" : "FALHOU")}");
-
             if (!canConnect)
             {
                 logger.LogError("❌ Não foi possível conectar ao banco de dados");
                 return;
             }
 
-            // 1. Criar scopes OpenIddict
-            logger.LogInformation("🔧 Iniciando criação de scopes OpenIddict...");
+            logger.LogInformation("📊 Conexão com banco: OK");
+
+            // ✅ ORDEM CORRETA DE EXECUÇÃO
             await CriarScopesOpenIddict(scopeManager, logger);
-
-            // 2. Criar aplicações OpenIddict
-            logger.LogInformation("🔧 Iniciando criação de aplicações OpenIddict...");
             await CriarAplicacoesOpenIddict(applicationManager, logger);
-
-            // 3. Criar papéis base
-            logger.LogInformation("📋 Iniciando criação de papéis...");
             await CriarPapeisBase(roleManager, logger);
-
-            // 4. Criar permissões base (incluindo as de email)
-            logger.LogInformation("🔐 Iniciando criação de permissões...");
             await CriarPermissoesBase(context, logger);
-
-            // 5. Associar permissões aos papéis
-            logger.LogInformation("🔗 Iniciando associação de permissões...");
             await AssociarPermissoesAosPapeis(context, roleManager, logger);
-
-            // 6. Criar usuário super admin
-            logger.LogInformation("👑 Iniciando criação do Super Admin...");
             await CriarSuperAdmin(userManager, logger);
-
-            // 7. Criar grupos base
-            logger.LogInformation("👥 Iniciando criação de grupos...");
             await CriarGruposBase(context, logger);
+            await CriarTemplatesEmail(context, logger);
 
-            // 8. Salvar mudanças
+            // Salvar mudanças finais
             logger.LogInformation("💾 Salvando mudanças no banco...");
-            var mudancas = await context.SaveChangesAsync();
-            logger.LogInformation($"💾 {mudancas} mudanças salvas no banco");
+            var mudancasSalvas = await context.SaveChangesAsync();
+            logger.LogInformation($"💾 {mudancasSalvas} mudanças salvas no banco");
 
             logger.LogInformation("✅ Seeder executado com sucesso!");
         }
@@ -72,6 +54,252 @@ public static class SeederInicial
             logger.LogError(ex, "❌ Erro durante a execução do seeder");
             throw;
         }
+    }
+
+    private static async Task CriarTemplatesEmail(GestusDbContexto context, ILogger logger)
+    {
+        logger.LogInformation("📧 Criando templates de email...");
+
+        // Buscar configuração de email existente
+        var configuracaoEmail = await context.Set<ConfiguracaoEmail>()
+            .Where(c => c.Ativo)
+            .FirstOrDefaultAsync();
+
+        if (configuracaoEmail == null)
+        {
+            logger.LogWarning("⚠️ Nenhuma configuração de email encontrada. Pulando criação de templates.");
+            return;
+        }
+
+        // ✅ CRIAR TODOS OS TEMPLATES DE UMA VEZ
+        await CriarTemplateSeNaoExistir(context, configuracaoEmail.Id, "BoasVindas", logger);
+        await CriarTemplateSeNaoExistir(context, configuracaoEmail.Id, "RecuperarSenha", logger);
+        await CriarTemplateSeNaoExistir(context, configuracaoEmail.Id, "ConfirmarEmail", logger);
+    }
+
+    private static async Task CriarTemplateSeNaoExistir(GestusDbContexto context, int configuracaoEmailId, string tipo, ILogger logger)
+    {
+        var templateExists = await context.Set<TemplateEmail>()
+            .AnyAsync(t => t.Tipo == tipo && t.ConfiguracaoEmailId == configuracaoEmailId);
+
+        if (!templateExists)
+        {
+            var template = new TemplateEmail
+            {
+                ConfiguracaoEmailId = configuracaoEmailId,
+                Tipo = tipo,
+                Assunto = ObterAssuntoPadrao(tipo),
+                CorpoHtml = ObterCorpoHtmlPadrao(tipo),
+                CorpoTexto = ObterCorpoTextoPadrao(tipo),
+                Ativo = true,
+                DataCriacao = DateTime.UtcNow
+            };
+
+            context.Set<TemplateEmail>().Add(template);
+            logger.LogInformation($"✅ Template '{tipo}' criado");
+        }
+        else
+        {
+            logger.LogInformation($"⚠️ Template '{tipo}' já existe");
+        }
+    }
+
+    private static string ObterAssuntoPadrao(string tipo)
+    {
+        return tipo switch
+        {
+            "BoasVindas" => "Bem-vindo(a) ao {NomeSistema}!",
+            "RecuperarSenha" => "Recuperação de Senha - {NomeSistema}",
+            "ConfirmarEmail" => "Confirme seu email - {NomeSistema}",
+            _ => $"Notificação - {tipo}"
+        };
+    }
+
+    private static string ObterCorpoHtmlPadrao(string tipo)
+    {
+        return tipo switch
+        {
+            "RecuperarSenha" => @"
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <title>Recuperação de Senha</title>
+    </head>
+    <body style='margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f5f5f5;'>
+        <div style='max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;'>
+                <h1 style='color: white; margin: 0; font-size: 28px; font-weight: 300;'>🔐 Recuperação de Senha</h1>
+                <p style='color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;'>{NomeSistema}</p>
+            </div>
+            <div style='padding: 40px 30px;'>
+                <h2 style='color: #333; margin: 0 0 20px 0; font-size: 24px; font-weight: 400;'>Olá, {NomeUsuario}!</h2>
+                <p style='color: #666; line-height: 1.6; margin: 0 0 20px 0; font-size: 16px;'>
+                    Recebemos uma solicitação para redefinir a senha da sua conta em <strong>{EmailUsuario}</strong>.
+                </p>
+                <div style='text-align: center; margin: 30px 0;'>
+                    <a href='{LinkRecuperacao}' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 500; font-size: 16px;'>
+                        🔑 Redefinir Senha
+                    </a>
+                </div>
+                <div style='background: #f8f9ff; border-left: 4px solid #667eea; padding: 20px; margin: 30px 0; border-radius: 0 5px 5px 0;'>
+                    <p style='margin: 0; color: #555; font-size: 14px; line-height: 1.5;'>
+                        <strong>⏰ Importante:</strong> Este link expira em <strong>{DataExpiracao}</strong> por motivos de segurança.
+                    </p>
+                </div>
+            </div>
+            <div style='background: #f8f9fa; padding: 20px 30px; border-top: 1px solid #e9ecef; text-align: center;'>
+                <p style='margin: 0; color: #6c757d; font-size: 12px; line-height: 1.5;'>
+                    Este é um email automático do <strong>{NomeSistema}</strong>.<br>
+                    Por favor, não responda a este email.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>",
+
+            "BoasVindas" => @"
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <title>Bem-vindo!</title>
+    </head>
+    <body style='margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f5f5f5;'>
+        <div style='max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+            <div style='background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px; text-align: center;'>
+                <h1 style='color: white; margin: 0; font-size: 28px; font-weight: 300;'>🎉 Bem-vindo!</h1>
+                <p style='color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;'>{NomeSistema}</p>
+            </div>
+            <div style='padding: 40px 30px;'>
+                <h2 style='color: #333; margin: 0 0 20px 0; font-size: 24px; font-weight: 400;'>Olá, {NomeUsuario}!</h2>
+                <p style='color: #666; line-height: 1.6; margin: 0 0 20px 0; font-size: 16px;'>
+                    Sua conta foi criada com sucesso no <strong>{NomeSistema}</strong>! 🎊
+                </p>
+                <div style='text-align: center; margin: 30px 0;'>
+                    <a href='{LinkLogin}' style='display: inline-block; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 500; font-size: 16px;'>
+                        🚀 Acessar Sistema
+                    </a>
+                </div>
+            </div>
+            <div style='background: #f8f9fa; padding: 20px 30px; border-top: 1px solid #e9ecef; text-align: center;'>
+                <p style='margin: 0; color: #6c757d; font-size: 12px; line-height: 1.5;'>
+                    Este é um email automático do <strong>{NomeSistema}</strong>.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>",
+
+            "ConfirmarEmail" => @"
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <title>Confirmar Email</title>
+    </head>
+    <body style='margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f5f5f5;'>
+        <div style='max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+            <div style='background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); padding: 30px; text-align: center;'>
+                <h1 style='color: white; margin: 0; font-size: 28px; font-weight: 300;'>📧 Confirmar Email</h1>
+                <p style='color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;'>{NomeSistema}</p>
+            </div>
+            <div style='padding: 40px 30px;'>
+                <h2 style='color: #333; margin: 0 0 20px 0; font-size: 24px; font-weight: 400;'>Olá, {NomeUsuario}!</h2>
+                <p style='color: #666; line-height: 1.6; margin: 0 0 20px 0; font-size: 16px;'>
+                    Para finalizar o cadastro, confirme seu email: <strong>{EmailUsuario}</strong>
+                </p>
+                <div style='text-align: center; margin: 30px 0;'>
+                    <a href='{LinkConfirmacao}' style='display: inline-block; background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 500; font-size: 16px;'>
+                        ✅ Confirmar Email
+                    </a>
+                </div>
+            </div>
+            <div style='background: #f8f9fa; padding: 20px 30px; border-top: 1px solid #e9ecef; text-align: center;'>
+                <p style='margin: 0; color: #6c757d; font-size: 12px; line-height: 1.5;'>
+                    Este é um email automático do <strong>{NomeSistema}</strong>.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>",
+
+            _ => $@"
+    <html>
+    <body>
+        <h2>{tipo} - {{NomeSistema}}</h2>
+        <p>Olá {{NomeUsuario}},</p>
+        <p>Esta é uma mensagem do sistema {{NomeSistema}}.</p>
+        <p>Template padrão para o tipo: {tipo}</p>
+    </body>
+    </html>"
+        };
+    }
+
+    private static string ObterCorpoTextoPadrao(string tipo)
+    {
+        return tipo switch
+        {
+            "RecuperarSenha" => @"
+    RECUPERAÇÃO DE SENHA - {NomeSistema}
+
+    Olá {NomeUsuario}!
+
+    Recebemos uma solicitação para redefinir a senha da sua conta ({EmailUsuario}).
+
+    Para criar uma nova senha, acesse o link abaixo:
+    {LinkRecuperacao}
+
+    IMPORTANTE: Este link expira em {DataExpiracao} por motivos de segurança.
+
+    Se você não solicitou esta alteração, pode ignorar este email.
+
+    ---
+    Este é um email automático do {NomeSistema}.",
+
+            "BoasVindas" => @"
+    BEM-VINDO AO {NomeSistema}!
+
+    Olá {NomeUsuario}!
+
+    Sua conta foi criada com sucesso! 
+
+    Email: {EmailUsuario}
+
+    Para acessar o sistema, clique no link:
+    {LinkLogin}
+
+    ---
+    Este é um email automático do {NomeSistema}.",
+
+            "ConfirmarEmail" => @"
+    CONFIRMAR EMAIL - {NomeSistema}
+
+    Olá {NomeUsuario}!
+
+    Para finalizar o cadastro, confirme seu email: {EmailUsuario}
+
+    Clique no link abaixo para confirmar:
+    {LinkConfirmacao}
+
+    Se você não criou uma conta no {NomeSistema}, ignore este email.
+
+    ---
+    Este é um email automático do {NomeSistema}.",
+
+            _ => $@"
+    {tipo.ToUpper()} - {{NomeSistema}}
+
+    Olá {{NomeUsuario}},
+
+    Esta é uma mensagem do sistema {{NomeSistema}}.
+    Template padrão para o tipo: {tipo}
+
+    Email: {{EmailUsuario}}"
+        };
     }
 
     private static async Task CriarAplicacoesOpenIddict(IOpenIddictApplicationManager applicationManager, ILogger logger)
@@ -210,87 +438,73 @@ public static class SeederInicial
     private static async Task CriarSuperAdmin(UserManager<Usuario> userManager, ILogger logger)
     {
         logger.LogInformation("👑 Criando usuário Super Admin...");
+        logger.LogInformation("👑 Verificando se usuário super@gestus.local já existe...");
 
-        const string emailSuperAdmin = "super@gestus.local";
-        const string senhaSuperAdmin = "Reboot3!";
-
-        logger.LogInformation($"👑 Verificando se usuário {emailSuperAdmin} já existe...");
+        var superAdminExiste = await userManager.FindByEmailAsync("super@gestus.local");
         
-        var superAdminExiste = await userManager.FindByEmailAsync(emailSuperAdmin);
         if (superAdminExiste == null)
         {
-            logger.LogInformation($"👑 Usuário não existe. Criando {emailSuperAdmin}...");
-            
             var superAdmin = new Usuario
             {
-                UserName = emailSuperAdmin,
-                Email = emailSuperAdmin,
+                UserName = "super@gestus.local",
+                Email = "super@gestus.local",
                 EmailConfirmed = true,
                 Nome = "Super",
-                Sobrenome = "Administrador",
-                NomeCompleto = "Super Administrador",
+                Sobrenome = "Admin",
+                NomeCompleto = "Super Admin",
                 Ativo = true,
-                DataCriacao = DateTime.UtcNow,
-                Observacoes = "Usuário Super Admin criado automaticamente pelo seeder"
+                DataCriacao = DateTime.UtcNow
             };
 
-            logger.LogInformation($"👑 Tentando criar usuário...");
-            var resultado = await userManager.CreateAsync(superAdmin, senhaSuperAdmin);
+            var resultado = await userManager.CreateAsync(superAdmin, "SuperAdmin123!");
             
             if (resultado.Succeeded)
             {
-                logger.LogInformation($"✅ Usuário criado com sucesso! ID: {superAdmin.Id}");
+                logger.LogInformation($"✅ Super Admin criado com ID: {superAdmin.Id}");
                 
-                // Verificar se o papel SuperAdmin existe
                 var papelSuperAdminExiste = await userManager.IsInRoleAsync(superAdmin, "SuperAdmin");
-                logger.LogInformation($"🔍 Usuário já tem papel SuperAdmin: {papelSuperAdminExiste}");
-                
                 if (!papelSuperAdminExiste)
                 {
-                    logger.LogInformation($"👑 Adicionando papel SuperAdmin ao usuário...");
                     var resultadoPapel = await userManager.AddToRoleAsync(superAdmin, "SuperAdmin");
-                    
                     if (resultadoPapel.Succeeded)
                     {
-                        logger.LogInformation($"✅ Papel SuperAdmin adicionado com sucesso!");
+                        logger.LogInformation("✅ Papel SuperAdmin atribuído ao usuário");
                     }
                     else
                     {
-                        logger.LogError($"❌ Erro ao adicionar papel: {string.Join(", ", resultadoPapel.Errors.Select(e => e.Description))}");
+                        logger.LogError($"❌ Erro ao atribuir papel SuperAdmin: {string.Join(", ", resultadoPapel.Errors.Select(e => e.Description))}");
                     }
                 }
-                
-                logger.LogInformation($"✅ Super Admin criado: {emailSuperAdmin}");
-                logger.LogInformation($"🔑 Credenciais: {emailSuperAdmin} / {senhaSuperAdmin}");
             }
             else
             {
                 logger.LogError($"❌ Erro ao criar Super Admin: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
-                
-                // Log mais detalhado dos erros
-                foreach (var error in resultado.Errors)
-                {
-                    logger.LogError($"❌ Erro específico: {error.Code} - {error.Description}");
-                }
             }
         }
         else
         {
             logger.LogInformation($"⚠️  Super Admin já existe (ID: {superAdminExiste.Id})");
             
-            // Verificar se tem o papel correto
             var temPapel = await userManager.IsInRoleAsync(superAdminExiste, "SuperAdmin");
-            logger.LogInformation($"🔍 Usuário tem papel SuperAdmin: {temPapel}");
-            
             if (!temPapel)
             {
-                logger.LogInformation($"👑 Adicionando papel SuperAdmin ao usuário existente...");
-                await userManager.AddToRoleAsync(superAdminExiste, "SuperAdmin");
+                var resultadoPapel = await userManager.AddToRoleAsync(superAdminExiste, "SuperAdmin");
+                if (resultadoPapel.Succeeded)
+                {
+                    logger.LogInformation("✅ Papel SuperAdmin atribuído ao usuário existente");
+                }
+                else
+                {
+                    logger.LogError($"❌ Erro ao atribuir papel SuperAdmin ao usuário existente: {string.Join(", ", resultadoPapel.Errors.Select(e => e.Description))}");
+                }
+            }
+            else
+            {
+                logger.LogInformation($"🔍 Usuário tem papel SuperAdmin: {temPapel}");
             }
         }
-        
-        // ✅ Verificação final
-        var usuarioFinal = await userManager.FindByEmailAsync(emailSuperAdmin);
+
+        var usuarioFinal = await userManager.FindByEmailAsync("super@gestus.local");
         if (usuarioFinal != null)
         {
             var papeis = await userManager.GetRolesAsync(usuarioFinal);
@@ -302,91 +516,147 @@ public static class SeederInicial
     {
         logger.LogInformation("🔐 Criando permissões base...");
 
-        var permissoesCountAntes = await context.Permissoes.CountAsync();
-        logger.LogInformation($"🔐 Permissões existentes antes: {permissoesCountAntes}");
-
-        // ✅ PERMISSÕES ATUALIZADAS COM SISTEMA DE EMAIL
         var permissoesBase = new[]
         {
-            // Sistema
-            new { Nome = "Sistema.Controle.Total", Descricao = "Controle total do sistema", Recurso = "Sistema", Acao = "Controle", Categoria = "Sistema" },
-            new { Nome = "Sistema.Configuracao.Gerenciar", Descricao = "Gerenciar configurações do sistema", Recurso = "Sistema", Acao = "Configuracao", Categoria = "Sistema" },
+            // ✅ PERMISSÕES EXISTENTES (manter)
+            new { Nome = "Usuarios.Listar", Descricao = "Listar usuários", Recurso = "Usuarios", Acao = "Listar", Categoria = "Sistema" },
+            new { Nome = "Usuarios.Visualizar", Descricao = "Visualizar detalhes de usuários", Recurso = "Usuarios", Acao = "Visualizar", Categoria = "Sistema" },
+            new { Nome = "Usuarios.Criar", Descricao = "Criar novos usuários", Recurso = "Usuarios", Acao = "Criar", Categoria = "Sistema" },
+            new { Nome = "Usuarios.Editar", Descricao = "Editar usuários existentes", Recurso = "Usuarios", Acao = "Editar", Categoria = "Sistema" },
+            new { Nome = "Usuarios.Remover", Descricao = "Remover usuários (soft delete)", Recurso = "Usuarios", Acao = "Remover", Categoria = "Sistema" },
+            new { Nome = "Usuarios.Reativar", Descricao = "Reativar usuários desativados", Recurso = "Usuarios", Acao = "Reativar", Categoria = "Sistema" },
             
-            // ✅ NOVAS PERMISSÕES DE EMAIL
-            new { Nome = "sistema.email.ler", Descricao = "Visualizar configurações de email", Recurso = "Sistema", Acao = "EmailLer", Categoria = "Email" },
-            new { Nome = "sistema.email.configurar", Descricao = "Configurar sistema de email", Recurso = "Sistema", Acao = "EmailConfigurar", Categoria = "Email" },
-            new { Nome = "sistema.email.testar", Descricao = "Testar configurações de email", Recurso = "Sistema", Acao = "EmailTestar", Categoria = "Email" },
+            // ✅ NOVAS PERMISSÕES CRÍTICAS PARA SUPER ADMIN
+            new { Nome = "Usuarios.ExcluirPermanente", Descricao = "Exclusão permanente de usuários (hard delete)", Recurso = "Usuarios", Acao = "ExcluirPermanente", Categoria = "Sistema" },
+            new { Nome = "Usuarios.AlterarSenha", Descricao = "Alterar senha de outros usuários", Recurso = "Usuarios", Acao = "AlterarSenha", Categoria = "Sistema" },
+            new { Nome = "Usuarios.GerenciarPapeis", Descricao = "Gerenciar papéis de usuários", Recurso = "Usuarios", Acao = "GerenciarPapeis", Categoria = "Sistema" },
+            new { Nome = "Usuarios.BuscaAvancada", Descricao = "Busca avançada de usuários", Recurso = "Usuarios", Acao = "BuscaAvancada", Categoria = "Sistema" },
+            new { Nome = "Usuarios.OperacoesLote", Descricao = "Operações em lote com usuários", Recurso = "Usuarios", Acao = "OperacoesLote", Categoria = "Sistema" },
             
-            // ✅ NOVAS PERMISSÕES DE TEMPLATES
-            new { Nome = "templates.criar", Descricao = "Criar templates de email", Recurso = "Templates", Acao = "Criar", Categoria = "Email" },
-            new { Nome = "templates.editar", Descricao = "Editar templates de email", Recurso = "Templates", Acao = "Editar", Categoria = "Email" },
-            new { Nome = "templates.excluir", Descricao = "Excluir templates de email", Recurso = "Templates", Acao = "Excluir", Categoria = "Email" },
-            new { Nome = "templates.testar", Descricao = "Testar templates de email", Recurso = "Templates", Acao = "Testar", Categoria = "Email" },
-            new { Nome = "sistema.configurar", Descricao = "Configurar sistema", Recurso = "Sistema", Acao = "Configurar", Categoria = "Sistema" },
-
-            // Usuários
-            new { Nome = "Usuarios.Criar", Descricao = "Criar novos usuários", Recurso = "Usuarios", Acao = "Criar", Categoria = "Gestão" },
-            new { Nome = "Usuarios.Listar", Descricao = "Listar usuários", Recurso = "Usuarios", Acao = "Listar", Categoria = "Gestão" },
-            new { Nome = "Usuarios.Visualizar", Descricao = "Visualizar detalhes de usuários", Recurso = "Usuarios", Acao = "Visualizar", Categoria = "Gestão" },
-            new { Nome = "Usuarios.Editar", Descricao = "Editar usuários existentes", Recurso = "Usuarios", Acao = "Editar", Categoria = "Gestão" },
-            new { Nome = "Usuarios.Excluir", Descricao = "Excluir usuários", Recurso = "Usuarios", Acao = "Excluir", Categoria = "Gestão" },
-            new { Nome = "Usuarios.GerenciarPapeis", Descricao = "Gerenciar papéis de usuários", Recurso = "Usuarios", Acao = "GerenciarPapeis", Categoria = "Gestão" },
-
-            // Papéis
-            new { Nome = "Papeis.Criar", Descricao = "Criar novos papéis", Recurso = "Papeis", Acao = "Criar", Categoria = "Segurança" },
-            new { Nome = "Papeis.Listar", Descricao = "Listar papéis", Recurso = "Papeis", Acao = "Listar", Categoria = "Segurança" },
-            new { Nome = "Papeis.Visualizar", Descricao = "Visualizar detalhes de papéis", Recurso = "Papeis", Acao = "Visualizar", Categoria = "Segurança" },
-            new { Nome = "Papeis.Editar", Descricao = "Editar papéis existentes", Recurso = "Papeis", Acao = "Editar", Categoria = "Segurança" },
-            new { Nome = "Papeis.Excluir", Descricao = "Excluir papéis", Recurso = "Papeis", Acao = "Excluir", Categoria = "Segurança" },
-            new { Nome = "Papeis.GerenciarPermissoes", Descricao = "Gerenciar permissões de papéis", Recurso = "Papeis", Acao = "GerenciarPermissoes", Categoria = "Segurança" },
-
-            // Permissões
-            new { Nome = "Permissoes.Criar", Descricao = "Criar novas permissões", Recurso = "Permissoes", Acao = "Criar", Categoria = "Segurança" },
-            new { Nome = "Permissoes.Listar", Descricao = "Listar permissões", Recurso = "Permissoes", Acao = "Listar", Categoria = "Segurança" },
-            new { Nome = "Permissoes.Visualizar", Descricao = "Visualizar detalhes de permissões", Recurso = "Permissoes", Acao = "Visualizar", Categoria = "Segurança" },
-            new { Nome = "Permissoes.Editar", Descricao = "Editar permissões existentes", Recurso = "Permissoes", Acao = "Editar", Categoria = "Segurança" },
-            new { Nome = "Permissoes.Excluir", Descricao = "Excluir permissões", Recurso = "Permissoes", Acao = "Excluir", Categoria = "Segurança" },
-
-            // Auditoria
-            new { Nome = "Auditoria.Visualizar", Descricao = "Visualizar logs de auditoria", Recurso = "Auditoria", Acao = "Visualizar", Categoria = "Auditoria" },
-            new { Nome = "Auditoria.Exportar", Descricao = "Exportar logs de auditoria", Recurso = "Auditoria", Acao = "Exportar", Categoria = "Auditoria" },
-
-            // Grupos
-            new { Nome = "Grupos.Criar", Descricao = "Criar novos grupos", Recurso = "Grupos", Acao = "Criar", Categoria = "Gestão" },
-            new { Nome = "Grupos.Listar", Descricao = "Listar grupos", Recurso = "Grupos", Acao = "Listar", Categoria = "Gestão" },
-            new { Nome = "Grupos.Visualizar", Descricao = "Visualizar detalhes de grupos", Recurso = "Grupos", Acao = "Visualizar", Categoria = "Gestão" },
-            new { Nome = "Grupos.Editar", Descricao = "Editar grupos existentes", Recurso = "Grupos", Acao = "Editar", Categoria = "Gestão" },
-            new { Nome = "Grupos.Excluir", Descricao = "Excluir grupos", Recurso = "Grupos", Acao = "Excluir", Categoria = "Gestão" }
+            // ✅ PERMISSÕES DE EMAIL (ADICIONAR ESTA QUE ESTÁ FALTANDO)
+            new { Nome = "Email.Listar", Descricao = "Listar configurações de email", Recurso = "Email", Acao = "Listar", Categoria = "Sistema" },
+            new { Nome = "Email.Visualizar", Descricao = "Visualizar configurações de email", Recurso = "Email", Acao = "Visualizar", Categoria = "Sistema" },
+            new { Nome = "Email.Criar", Descricao = "Criar configurações de email", Recurso = "Email", Acao = "Criar", Categoria = "Sistema" },
+            new { Nome = "Email.Editar", Descricao = "Editar configurações de email", Recurso = "Email", Acao = "Editar", Categoria = "Sistema" },
+            new { Nome = "Email.Remover", Descricao = "Remover configurações de email", Recurso = "Email", Acao = "Remover", Categoria = "Sistema" },
+            new { Nome = "Email.Enviar", Descricao = "Enviar emails", Recurso = "Email", Acao = "Enviar", Categoria = "Sistema" },
+            new { Nome = "Email.Configurar", Descricao = "Configurar templates de email", Recurso = "Email", Acao = "Configurar", Categoria = "Sistema" },
+            
+            // ✅ OUTRAS PERMISSÕES...
+            new { Nome = "Papeis.Listar", Descricao = "Listar papéis", Recurso = "Papeis", Acao = "Listar", Categoria = "Sistema" },
+            new { Nome = "Papeis.Visualizar", Descricao = "Visualizar detalhes de papéis", Recurso = "Papeis", Acao = "Visualizar", Categoria = "Sistema" },
+            new { Nome = "Papeis.Criar", Descricao = "Criar novos papéis", Recurso = "Papeis", Acao = "Criar", Categoria = "Sistema" },
+            new { Nome = "Papeis.Editar", Descricao = "Editar papéis existentes", Recurso = "Papeis", Acao = "Editar", Categoria = "Sistema" },
+            new { Nome = "Papeis.Remover", Descricao = "Remover papéis", Recurso = "Papeis", Acao = "Remover", Categoria = "Sistema" },
+            new { Nome = "Papeis.GerenciarPermissoes", Descricao = "Gerenciar permissões de papéis", Recurso = "Papeis", Acao = "GerenciarPermissoes", Categoria = "Sistema" },
+            
+            new { Nome = "Permissoes.Listar", Descricao = "Listar permissões", Recurso = "Permissoes", Acao = "Listar", Categoria = "Sistema" },
+            new { Nome = "Permissoes.Visualizar", Descricao = "Visualizar detalhes de permissões", Recurso = "Permissoes", Acao = "Visualizar", Categoria = "Sistema" },
+            new { Nome = "Permissoes.Criar", Descricao = "Criar novas permissões", Recurso = "Permissoes", Acao = "Criar", Categoria = "Sistema" },
+            new { Nome = "Permissoes.Editar", Descricao = "Editar permissões existentes", Recurso = "Permissoes", Acao = "Editar", Categoria = "Sistema" },
+            new { Nome = "Permissoes.Remover", Descricao = "Remover permissões", Recurso = "Permissoes", Acao = "Remover", Categoria = "Sistema" },
+            
+            new { Nome = "Grupos.Listar", Descricao = "Listar grupos", Recurso = "Grupos", Acao = "Listar", Categoria = "Sistema" },
+            new { Nome = "Grupos.Visualizar", Descricao = "Visualizar detalhes de grupos", Recurso = "Grupos", Acao = "Visualizar", Categoria = "Sistema" },
+            new { Nome = "Grupos.Criar", Descricao = "Criar novos grupos", Recurso = "Grupos", Acao = "Criar", Categoria = "Sistema" },
+            new { Nome = "Grupos.Editar", Descricao = "Editar grupos existentes", Recurso = "Grupos", Acao = "Editar", Categoria = "Sistema" },
+            new { Nome = "Grupos.Remover", Descricao = "Remover grupos", Recurso = "Grupos", Acao = "Remover", Categoria = "Sistema" },
+            new { Nome = "Grupos.GerenciarMembros", Descricao = "Gerenciar membros de grupos", Recurso = "Grupos", Acao = "GerenciarMembros", Categoria = "Sistema" },
+            
+            new { Nome = "Auditoria.Listar", Descricao = "Listar registros de auditoria", Recurso = "Auditoria", Acao = "Listar", Categoria = "Sistema" },
+            new { Nome = "Auditoria.Visualizar", Descricao = "Visualizar detalhes de auditoria", Recurso = "Auditoria", Acao = "Visualizar", Categoria = "Sistema" },
+            new { Nome = "Auditoria.Exportar", Descricao = "Exportar dados de auditoria", Recurso = "Auditoria", Acao = "Exportar", Categoria = "Sistema" },
+            
+            new { Nome = "Sistema.Configurar", Descricao = "Configurar sistema", Recurso = "Sistema", Acao = "Configurar", Categoria = "Sistema" },
+            new { Nome = "Sistema.Monitorar", Descricao = "Monitorar sistema e logs", Recurso = "Sistema", Acao = "Monitorar", Categoria = "Sistema" },
+            new { Nome = "Sistema.Backup", Descricao = "Fazer backup do sistema", Recurso = "Sistema", Acao = "Backup", Categoria = "Sistema" },
+            new { Nome = "Sistema.Restore", Descricao = "Restaurar backup do sistema", Recurso = "Sistema", Acao = "Restore", Categoria = "Sistema" }
         };
+
+        // ✅ VERIFICAÇÃO CORRETA DE DUPLICAÇÃO (por RECURSO e AÇÃO)
+        var permissoesExistentes = await context.Permissoes
+            .Select(p => new { p.Recurso, p.Acao })
+            .ToListAsync();
+
+        var permissoesParaCriar = new List<Permissao>();
 
         foreach (var permissaoInfo in permissoesBase)
         {
-            var permissaoExiste = await context.Permissoes
-                .AnyAsync(p => p.Nome == permissaoInfo.Nome);
-
+            // ✅ VERIFICAR POR RECURSO E AÇÃO (não por nome)
+            var permissaoExiste = permissoesExistentes.Any(p => 
+                p.Recurso == permissaoInfo.Recurso && p.Acao == permissaoInfo.Acao);
+            
             if (!permissaoExiste)
             {
-                var novaPermissao = new Permissao
+                permissoesParaCriar.Add(new Permissao
                 {
                     Nome = permissaoInfo.Nome,
                     Descricao = permissaoInfo.Descricao,
                     Recurso = permissaoInfo.Recurso,
                     Acao = permissaoInfo.Acao,
                     Categoria = permissaoInfo.Categoria,
-                    Ativo = true
-                };
-
-                context.Permissoes.Add(novaPermissao);
-                logger.LogInformation($"✅ Permissão criada: {permissaoInfo.Nome}");
-            }
-            else
-            {
-                logger.LogInformation($"⚠️  Permissão '{permissaoInfo.Nome}' já existe");
+                    Ativo = true,
+                    DataCriacao = DateTime.UtcNow
+                });
             }
         }
 
-        var permissoesCountDepois = await context.Permissoes.CountAsync();
-        logger.LogInformation($"🔐 Permissões existentes depois: {permissoesCountDepois}");
+        if (permissoesParaCriar.Any())
+        {
+            try
+            {
+                context.Permissoes.AddRange(permissoesParaCriar);
+                await context.SaveChangesAsync();
+                logger.LogInformation($"✅ {permissoesParaCriar.Count} novas permissões criadas");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "❌ Erro ao criar permissões. Algumas podem já existir.");
+                
+                // ✅ SALVAR UMA POR UMA PARA IDENTIFICAR DUPLICATAS
+                var sucessos = 0;
+                foreach (var permissao in permissoesParaCriar)
+                {
+                    try
+                    {
+                        // ✅ VERIFICAR NOVAMENTE ANTES DE INSERIR
+                        var jaExiste = await context.Permissoes
+                            .AnyAsync(p => p.Recurso == permissao.Recurso && p.Acao == permissao.Acao);
+                        
+                        if (!jaExiste)
+                        {
+                            context.Permissoes.Add(permissao);
+                            await context.SaveChangesAsync();
+                            sucessos++;
+                            logger.LogInformation($"✅ Permissão {permissao.Nome} criada");
+                        }
+                        else
+                        {
+                            logger.LogInformation($"⚠️ Permissão {permissao.Nome} já existe");
+                        }
+                    }
+                    catch (Exception permEx)
+                    {
+                        logger.LogWarning($"⚠️ Erro ao criar permissão {permissao.Nome}: {permEx.Message}");
+                        
+                        // ✅ LIMPAR TRACKING PARA PRÓXIMA TENTATIVA
+                        context.Entry(permissao).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+                    }
+                }
+                
+                if (sucessos > 0)
+                {
+                    logger.LogInformation($"✅ {sucessos} permissões criadas com sucesso");
+                }
+            }
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Todas as permissões já existem");
+        }
+
+        var totalPermissoes = await context.Permissoes.CountAsync();
+        logger.LogInformation($"📋 Total de permissões no sistema: {totalPermissoes}");
     }
 
     private static async Task AssociarPermissoesAosPapeis(GestusDbContexto context, RoleManager<Papel> roleManager, ILogger logger)
@@ -394,117 +664,154 @@ public static class SeederInicial
         logger.LogInformation("🔗 Associando permissões aos papéis...");
 
         var todasPermissoes = await context.Permissoes.Where(p => p.Ativo).ToListAsync();
-
-        // SuperAdmin - TODAS as permissões (incluindo as novas de email)
+        
+        // ✅ SUPER ADMIN - TODAS AS PERMISSÕES (SEMPRE)
         var superAdminPapel = await roleManager.FindByNameAsync("SuperAdmin");
         if (superAdminPapel != null)
         {
+            logger.LogInformation("👑 Associando TODAS as permissões ao Super Admin...");
             await AssociarPermissoesAoPapel(context, superAdminPapel.Id, todasPermissoes, logger, "SuperAdmin");
+            logger.LogInformation($"✅ Super Admin agora tem {todasPermissoes.Count} permissões");
         }
         else
         {
-            logger.LogWarning("⚠️ Papel SuperAdmin não encontrado");
+            logger.LogError("❌ Papel SuperAdmin não encontrado!");
         }
 
-        // Admin - Todas exceto controle total
+        // ✅ ADMIN - PERMISSÕES OPERACIONAIS (SEM SISTEMA CRÍTICO)
         var adminPapel = await roleManager.FindByNameAsync("Admin");
         if (adminPapel != null)
         {
-            var permissoesAdmin = todasPermissoes
-                .Where(p => p.Nome != "Sistema.Controle.Total")
-                .ToList();
+            var permissoesAdmin = todasPermissoes.Where(p => 
+                // Usuários (sem exclusão permanente)
+                (p.Recurso == "Usuarios" && p.Acao != "ExcluirPermanente") ||
+                // Papéis (básico)
+                (p.Recurso == "Papeis" && new[] { "Listar", "Visualizar" }.Contains(p.Acao)) ||
+                // Permissões (apenas visualizar)
+                (p.Recurso == "Permissoes" && new[] { "Listar", "Visualizar" }.Contains(p.Acao)) ||
+                // Grupos (completo)
+                p.Recurso == "Grupos" ||
+                // Auditoria (sem exportar)
+                (p.Recurso == "Auditoria" && p.Acao != "Exportar") ||
+                // Email (básico)
+                (p.Recurso == "Email" && new[] { "Enviar", "Listar", "Visualizar" }.Contains(p.Acao))
+            ).ToList();
+            
             await AssociarPermissoesAoPapel(context, adminPapel.Id, permissoesAdmin, logger, "Admin");
+            logger.LogInformation($"✅ Admin agora tem {permissoesAdmin.Count} permissões");
         }
 
-        // Usuario - Permissões básicas + visualizar configurações de email
+        // ✅ USUÁRIO - PERMISSÕES BÁSICAS
         var usuarioPapel = await roleManager.FindByNameAsync("Usuario");
         if (usuarioPapel != null)
         {
-            var permissoesUsuario = todasPermissoes
-                .Where(p => p.Nome == "Usuarios.Visualizar" || 
-                           p.Nome == "Papeis.Visualizar" || 
-                           p.Nome == "Permissoes.Visualizar" ||
-                           p.Nome == "sistema.email.ler") // ✅ ADICIONADO
-                .ToList();
+            var permissoesUsuario = todasPermissoes.Where(p => 
+                // Apenas visualizar próprio perfil (será controlado no controller)
+                (p.Recurso == "Usuarios" && p.Acao == "Visualizar")
+            ).ToList();
+            
             await AssociarPermissoesAoPapel(context, usuarioPapel.Id, permissoesUsuario, logger, "Usuario");
+            logger.LogInformation($"✅ Usuario agora tem {permissoesUsuario.Count} permissões");
         }
 
-        // GestorUsuarios - Gestão de usuários + email
+        // ✅ GESTOR DE USUÁRIOS - PERMISSÕES DE USUÁRIOS
         var gestorUsuariosPapel = await roleManager.FindByNameAsync("GestorUsuarios");
         if (gestorUsuariosPapel != null)
         {
-            var permissoesGestorUsuarios = todasPermissoes
-                .Where(p => p.Recurso == "Usuarios" || 
-                           p.Nome == "sistema.email.ler" ||
-                           p.Nome == "templates.testar")
-                .ToList();
+            var permissoesGestorUsuarios = todasPermissoes.Where(p => 
+                // Usuários (sem exclusão permanente e sem gerenciar papéis de admin)
+                (p.Recurso == "Usuarios" && !new[] { "ExcluirPermanente", "GerenciarPapeis" }.Contains(p.Acao)) ||
+                // Grupos (visualizar)
+                (p.Recurso == "Grupos" && new[] { "Listar", "Visualizar" }.Contains(p.Acao))
+            ).ToList();
+            
             await AssociarPermissoesAoPapel(context, gestorUsuariosPapel.Id, permissoesGestorUsuarios, logger, "GestorUsuarios");
+            logger.LogInformation($"✅ GestorUsuarios agora tem {permissoesGestorUsuarios.Count} permissões");
         }
         else
         {
             logger.LogWarning("⚠️ Papel GestorUsuarios não encontrado");
         }
 
-        // GestorPermissoes - Gestão de permissões e papéis + email
-        var gestorPermissoesPapel = await roleManager.FindByNameAsync("GestorPermissoes");
-        if (gestorPermissoesPapel != null)
-        {
-            var permissoesGestorPermissoes = todasPermissoes
-                .Where(p => p.Recurso == "Permissoes" || 
-                           p.Recurso == "Papeis" ||
-                           p.Nome == "sistema.email.ler" ||
-                           p.Nome == "templates.criar" ||
-                           p.Nome == "templates.editar")
-                .ToList();
-            await AssociarPermissoesAoPapel(context, gestorPermissoesPapel.Id, permissoesGestorPermissoes, logger, "GestorPermissoes");
-        }
-        else
-        {
-            logger.LogWarning("⚠️ Papel GestorPermissoes não encontrado");
-        }
-
-        // Auditor - Apenas visualização + leitura de email
-        var auditorPapel = await roleManager.FindByNameAsync("Auditor");
-        if (auditorPapel != null)
-        {
-            var permissoesAuditor = todasPermissoes
-                .Where(p => p.Acao == "Visualizar" || 
-                           p.Acao == "Listar" || 
-                           p.Recurso == "Auditoria" ||
-                           p.Nome == "sistema.email.ler")
-                .ToList();
-            await AssociarPermissoesAoPapel(context, auditorPapel.Id, permissoesAuditor, logger, "Auditor");
-        }
-        else
-        {
-            logger.LogWarning("⚠️ Papel Auditor não encontrado");
-        }
+        logger.LogInformation("🔗 Associação de permissões concluída!");
     }
 
     private static async Task AssociarPermissoesAoPapel(GestusDbContexto context, int papelId, List<Permissao> permissoes, ILogger logger, string nomePapel)
     {
-        var permissoesExistentes = await context.Set<PapelPermissao>()
+        var permissoesExistentes = await context.PapelPermissoes
             .Where(pp => pp.PapelId == papelId)
             .Select(pp => pp.PermissaoId)
             .ToListAsync();
 
-        var novasPermissoes = permissoes
-            .Where(p => !permissoesExistentes.Contains(p.Id))
-            .ToList();
+        var novasAssociacoes = new List<PapelPermissao>();
 
-        foreach (var permissao in novasPermissoes)
+        foreach (var permissao in permissoes)
         {
-            var papelPermissao = new PapelPermissao
+            if (!permissoesExistentes.Contains(permissao.Id))
             {
-                PapelId = papelId,
-                PermissaoId = permissao.Id
-            };
-
-            context.Set<PapelPermissao>().Add(papelPermissao);
+                novasAssociacoes.Add(new PapelPermissao
+                {
+                    PapelId = papelId,
+                    PermissaoId = permissao.Id,
+                    DataAtribuicao = DateTime.UtcNow,
+                    Ativo = true
+                });
+            }
         }
 
-        var totalPermissoes = permissoesExistentes.Count + novasPermissoes.Count;
-        logger.LogInformation($"🔗 Permissões associadas ao papel '{nomePapel}': {totalPermissoes}");
+        if (novasAssociacoes.Any())
+        {
+            try
+            {
+                context.PapelPermissoes.AddRange(novasAssociacoes);
+                await context.SaveChangesAsync();
+                logger.LogInformation($"🔗 {novasAssociacoes.Count} novas permissões associadas ao papel {nomePapel}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"❌ Erro ao associar permissões ao papel {nomePapel}");
+            }
+        }
+        else
+        {
+            logger.LogInformation($"⚠️ Todas as permissões já estão associadas ao papel {nomePapel}");
+        }
+    }
+
+    private static async Task CriarGruposBase(GestusDbContexto context, ILogger logger)
+    {
+        logger.LogInformation("👥 Criando grupos base...");
+
+        var gruposBase = new[]
+        {
+            new { Nome = "Administradores", Descricao = "Grupo de administradores do sistema", Tipo = "Sistema" },
+            new { Nome = "Gestores", Descricao = "Grupo de gestores operacionais", Tipo = "Operacional" },
+            new { Nome = "Usuarios", Descricao = "Grupo de usuários padrão", Tipo = "Padrão" },
+            new { Nome = "Auditores", Descricao = "Grupo de auditores", Tipo = "Auditoria" }
+        };
+
+        foreach (var grupoInfo in gruposBase)
+        {
+            var grupoExiste = await context.Grupos.AnyAsync(g => g.Nome == grupoInfo.Nome);
+            if (!grupoExiste)
+            {
+                var novoGrupo = new Grupo
+                {
+                    Nome = grupoInfo.Nome,
+                    Descricao = grupoInfo.Descricao,
+                    Tipo = grupoInfo.Tipo,
+                    Ativo = true,
+                    DataCriacao = DateTime.UtcNow
+                };
+
+                context.Grupos.Add(novoGrupo);
+                logger.LogInformation($"✅ Grupo '{grupoInfo.Nome}' criado");
+            }
+            else
+            {
+                logger.LogInformation($"⚠️  Grupo '{grupoInfo.Nome}' já existe");
+            }
+        }
     }
 
     private static async Task CriarScopesOpenIddict(IOpenIddictScopeManager scopeManager, ILogger logger)
@@ -517,7 +824,7 @@ public static class SeederInicial
             {
                 Name = "profile",
                 DisplayName = "Profile",
-                Description = "Profile information",
+                Description = "Access to profile information",
                 Resources = { "gestus_api" }
             });
             logger.LogInformation("✅ Scope 'profile' criado no OpenIddict");
@@ -533,7 +840,7 @@ public static class SeederInicial
             {
                 Name = "email",
                 DisplayName = "Email",
-                Description = "Email address",
+                Description = "Access to email address",
                 Resources = { "gestus_api" }
             });
             logger.LogInformation("✅ Scope 'email' criado no OpenIddict");
@@ -549,7 +856,7 @@ public static class SeederInicial
             {
                 Name = "roles",
                 DisplayName = "Roles",
-                Description = "User roles and permissions",
+                Description = "Access to user roles",
                 Resources = { "gestus_api" }
             });
             logger.LogInformation("✅ Scope 'roles' criado no OpenIddict");
@@ -557,43 +864,6 @@ public static class SeederInicial
         else
         {
             logger.LogInformation("⚠️ Scope 'roles' já existe no OpenIddict");
-        }
-    }
-
-    private static async Task CriarGruposBase(GestusDbContexto context, ILogger logger)
-    {
-        logger.LogInformation("👥 Criando grupos base...");
-
-        var gruposBase = new[]
-        {
-            new { Nome = "Administradores", Descricao = "Grupo de administradores do sistema", Tipo = "Sistema" },
-            new { Nome = "Gestores", Descricao = "Grupo de gestores operacionais", Tipo = "Operacional" },
-            new { Nome = "Usuarios", Descricao = "Grupo de usuários padrão", Tipo = "Geral" },
-            new { Nome = "Auditores", Descricao = "Grupo de auditores", Tipo = "Funcional" }
-        };
-
-        foreach (var grupoInfo in gruposBase)
-        {
-            var grupoExiste = await context.Grupos
-                .AnyAsync(g => g.Nome == grupoInfo.Nome);
-
-            if (!grupoExiste)
-            {
-                var novoGrupo = new Grupo
-                {
-                    Nome = grupoInfo.Nome,
-                    Descricao = grupoInfo.Descricao,
-                    Tipo = grupoInfo.Tipo,
-                    Ativo = true
-                };
-
-                context.Grupos.Add(novoGrupo);
-                logger.LogInformation($"✅ Grupo criado: {grupoInfo.Nome}");
-            }
-            else
-            {
-                logger.LogInformation($"⚠️  Grupo '{grupoInfo.Nome}' já existe");
-            }
         }
     }
 }

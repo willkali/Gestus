@@ -6,6 +6,7 @@ using Gestus.Services;
 using Gestus.DTOs.Sistema;
 using Gestus.Dados;
 using Gestus.Modelos;
+using Gestus.Extensoes;
 using System.ComponentModel.DataAnnotations;
 
 namespace Gestus.Controllers;
@@ -48,9 +49,20 @@ public class EmailConfigController : ControllerBase
     {
         try
         {
-            // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.ler"))
+            // ✅ ADICIONAR: Debug das claims para descobrir o problema
+            _logger.LogInformation("🔍 === DEBUG: Claims do usuário ===");
+            foreach (var claim in User.Claims)
             {
+                _logger.LogInformation($"   Tipo: {claim.Type} | Valor: {claim.Value}");
+            }
+            _logger.LogInformation("🔍 === FIM DEBUG CLAIMS ===");
+
+            // ✅ USAR EXTENSÃO COM BYPASS SUPER ADMIN
+            if (!User.TemPermissao("Email", "Listar") && !User.TemPermissao("Email", "Visualizar"))
+            {
+                _logger.LogWarning("🚫 Acesso negado ao endpoint ObterConfiguracao para usuário {UserId}", 
+                    User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+                
                 return StatusCode(403, new { message = "Usuário não tem permissão para visualizar configurações de email" });
             }
 
@@ -76,6 +88,7 @@ public class EmailConfigController : ControllerBase
                 UsarAutenticacao = configuracao.UsarAutenticacao,
                 EmailResposta = configuracao.EmailResposta,
                 EmailCopia = configuracao.EmailCopia,
+                // ✅ ADICIONAR: A propriedade que estava faltando no DTO
                 Ativo = configuracao.Ativo,
                 DataCriacao = configuracao.DataCriacao,
                 DataAtualizacao = configuracao.DataAtualizacao,
@@ -119,7 +132,7 @@ public class EmailConfigController : ControllerBase
             }
 
             // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.configurar"))
+            if (!User.TemPermissao("Email", "Configurar"))
             {
                 return StatusCode(403, new { message = "Usuário não tem permissão para configurar email do sistema" });
             }
@@ -256,8 +269,8 @@ public class EmailConfigController : ControllerBase
                 return BadRequest(ModelState);
             }
 
-            // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.testar"))
+            // ✅ CORRIGIR: Usar extensão
+            if (!User.TemPermissao("Email", "Testar") && !User.TemQualquerPermissao("sistema.email.testar"))
             {
                 return StatusCode(403, new { message = "Usuário não tem permissão para testar configurações de email" });
             }
@@ -303,8 +316,8 @@ public class EmailConfigController : ControllerBase
                 return BadRequest(ModelState);
             }
 
-            // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.testar"))
+            // ✅ CORRIGIR: Usar extensão
+            if (!User.TemPermissao("Email", "Testar") && !User.TemQualquerPermissao("sistema.email.testar"))
             {
                 return StatusCode(403, new { message = "Usuário não tem permissão para testar configurações de email" });
             }
@@ -355,8 +368,8 @@ public class EmailConfigController : ControllerBase
     {
         try
         {
-            // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.configurar"))
+            // ✅ CORRIGIR: Usar extensão (já está correto, manter)
+            if (!User.TemPermissao("Email", "Configurar"))
             {
                 return StatusCode(403, new { message = "Usuário não tem permissão para desativar configurações de email" });
             }
@@ -382,7 +395,7 @@ public class EmailConfigController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao desativar configuração de email");
+            _logger.LogError(ex, "❌ Erro ao desativar configuração");
             return StatusCode(500, new { message = "Erro interno do servidor" });
         }
     }
@@ -398,29 +411,25 @@ public class EmailConfigController : ControllerBase
     {
         try
         {
-            // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.ler"))
+            // ✅ CORRIGIR: Trocar verificação antiga por extensão
+            if (!User.TemPermissao("Email", "Visualizar") && !User.TemQualquerPermissao("sistema.email.ler"))
             {
-                return StatusCode(403, new { message = "Usuário não tem permissão para visualizar status do email" });
+                return StatusCode(403, new { message = "Usuário não tem permissão para visualizar status de email" });
             }
 
             var configuracao = await _context.Set<ConfiguracaoEmail>()
-                .Include(c => c.Templates)
                 .Where(c => c.Ativo)
                 .FirstOrDefaultAsync();
 
             var status = new
             {
-                configurado = configuracao != null,
-                ativo = configuracao?.Ativo ?? false,
-                servidor = configuracao?.ServidorSmtp ?? "Não configurado",
-                porta = configuracao?.Porta ?? 0,
-                emailRemetente = configuracao?.EmailRemetente ?? "Não configurado",
-                usarSsl = configuracao?.UsarSsl ?? false,
-                usarTls = configuracao?.UsarTls ?? false,
-                usarAutenticacao = configuracao?.UsarAutenticacao ?? false,
-                templatesConfigurados = configuracao?.Templates.Count ?? 0,
-                ultimaAtualizacao = configuracao?.DataAtualizacao ?? configuracao?.DataCriacao
+                configuracaoAtiva = configuracao != null,
+                configId = configuracao?.Id,
+                servidor = configuracao?.ServidorSmtp,
+                porta = configuracao?.Porta,
+                remetente = configuracao?.EmailRemetente,
+                ultimaAtualizacao = configuracao?.DataAtualizacao ?? configuracao?.DataCriacao,
+                quantidadeTemplates = configuracao?.Templates?.Count ?? 0
             };
 
             return Ok(status);
@@ -443,10 +452,10 @@ public class EmailConfigController : ControllerBase
     {
         try
         {
-            // ✅ CORRIGIDO: Verificar permissão corretamente
-            if (!User.HasClaim("permission", "sistema.email.ler"))
+            // ✅ CORRIGIR: Trocar verificação antiga por extensão
+            if (!User.TemPermissao("Email", "Visualizar") && !User.TemQualquerPermissao("sistema.email.ler"))
             {
-                return StatusCode(403, new { message = "Usuário não tem permissão para visualizar histórico de email" });
+                return StatusCode(403, new { message = "Usuário não tem permissão para visualizar histórico de configurações" });
             }
 
             var configuracoes = await _context.Set<ConfiguracaoEmail>()
@@ -468,7 +477,7 @@ public class EmailConfigController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao obter histórico de configurações de email");
+            _logger.LogError(ex, "❌ Erro ao obter histórico de configurações");
             return StatusCode(500, new { message = "Erro interno do servidor" });
         }
     }
