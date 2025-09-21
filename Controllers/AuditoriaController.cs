@@ -928,7 +928,7 @@ public class AuditoriaController : ControllerBase
 
             filtros ??= new FiltrosAuditoria();
 
-            // ✅ CORRIGIDO: Consulta simplificada para evitar problemas com JSON
+            // ✅ SIMPLIFICADO: Query sem verificação JSONB problemática
             var query = _context.RegistrosAuditoria
                 .Include(r => r.Usuario)
                 .AsQueryable();
@@ -936,7 +936,7 @@ public class AuditoriaController : ControllerBase
             query = AplicarFiltros(query, filtros);
             query = AplicarOrdenacao(query, filtros.OrdenarPor, filtros.DirecaoOrdenacao);
 
-            // ✅ LIMITAÇÃO: Máximo 10000 registros para exportação
+            // ✅ CONSULTA MAIS SIMPLES E SEGURA
             var registros = await query
                 .Take(10000)
                 .Select(r => new
@@ -950,9 +950,8 @@ public class AuditoriaController : ControllerBase
                     RecursoId = r.RecursoId ?? "",
                     EnderecoIp = r.EnderecoIp ?? "",
                     Observacoes = r.Observacoes ?? "",
-                    // ✅ CORRIGIDO: Verificar se tem alterações sem processar JSON
-                    TemAlteracoes = (r.DadosAntes != null && r.DadosAntes != "") || 
-                                   (r.DadosDepois != null && r.DadosDepois != "")
+                    // ✅ SIMPLES: Verificação básica sem JSONB
+                    TemAlteracoes = !string.IsNullOrEmpty(r.DadosAntes) || !string.IsNullOrEmpty(r.DadosDepois)
                 })
                 .ToListAsync();
 

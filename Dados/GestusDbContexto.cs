@@ -120,9 +120,14 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
             entity.Property(e => e.Observacoes).HasMaxLength(500);
             entity.Property(e => e.DataHora).HasDefaultValueSql("CURRENT_TIMESTAMP");
             
-            // Configurar campos JSON
-            entity.Property(e => e.DadosAntes).HasColumnType("jsonb");
-            entity.Property(e => e.DadosDepois).HasColumnType("jsonb");
+            // ✅ SOLUÇÃO: Usar TEXT em vez de JSONB
+            entity.Property(e => e.DadosAntes)
+                  .HasColumnType("text")
+                  .IsRequired(false);
+                  
+            entity.Property(e => e.DadosDepois)
+                  .HasColumnType("text")
+                  .IsRequired(false);
         });
     }
 
