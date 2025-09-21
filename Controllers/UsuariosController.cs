@@ -9,6 +9,7 @@ using Gestus.Dados;
 using Gestus.DTOs.Usuario;
 using Gestus.DTOs.Comuns;
 using Gestus.Validadores;
+using Gestus.Services;
 using System.Text.Json;
 
 namespace Gestus.Controllers;
@@ -20,24 +21,27 @@ namespace Gestus.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
-[Authorize] // ✅ SEMPRE autenticado para qualquer operação
+[Authorize]
 public class UsuariosController : ControllerBase
 {
     private readonly UserManager<Usuario> _userManager;
     private readonly RoleManager<Papel> _roleManager;
     private readonly GestusDbContexto _context;
     private readonly ILogger<UsuariosController> _logger;
+    private readonly IArquivoService _arquivoService;
 
     public UsuariosController(
         UserManager<Usuario> userManager,
         RoleManager<Papel> roleManager,
         GestusDbContexto context,
-        ILogger<UsuariosController> logger)
+        ILogger<UsuariosController> logger,
+        IArquivoService arquivoService)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _context = context;
         _logger = logger;
+        _arquivoService = arquivoService;
     }
 
     /// <summary>
@@ -1526,6 +1530,549 @@ public class UsuariosController : ControllerBase
             });
         }
     }
+    
+    /// <summary>
+    /// Obtém perfil do usuário logado
+    /// </summary>
+    /// <returns>Perfil completo do usuário</returns>
+    [HttpGet("perfil")]
+    [ProducesResponseType(typeof(PerfilUsuario), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ObterMeuPerfil()
+    {
+        try
+        {
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            
+            var usuario = await _context.Users
+                .Include(u => u.UsuarioPapeis.Where(up => up.Ativo))
+                    .ThenInclude(up => up.Papel)
+                .Include(u => u.UsuarioGrupos.Where(ug => ug.Ativo))
+                    .ThenInclude(ug => ug.Grupo)
+                .FirstOrDefaultAsync(u => u.Id == usuarioLogadoId);
+
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro { Erro = "UsuarioNaoEncontrado", Mensagem = "Usuário não encontrado" });
+            }
+
+            var perfil = new PerfilUsuario
+            {
+                Id = usuario.Id,
+                Email = usuario.Email!,
+                Nome = usuario.Nome,
+                Sobrenome = usuario.Sobrenome,
+                NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
+                Telefone = usuario.PhoneNumber,
+                CaminhoFotoPerfil = usuario.CaminhoFotoPerfil,
+                UrlFotoPerfil = !string.IsNullOrEmpty(usuario.CaminhoFotoPerfil) 
+                    ? _arquivoService.GerarUrlSegura(usuario.CaminhoFotoPerfil) 
+                    : null,
+                Profissao = usuario.Profissao,
+                Departamento = usuario.Departamento,
+                Bio = usuario.Bio,
+                DataNascimento = usuario.DataNascimento,
+                EnderecoCompleto = usuario.EnderecoCompleto,
+                Cidade = usuario.Cidade,
+                Estado = usuario.Estado,
+                Cep = usuario.Cep,
+                TelefoneAlternativo = usuario.TelefoneAlternativo,
+                PreferenciaIdioma = usuario.PreferenciaIdioma ?? "pt-BR",
+                PreferenciaTimezone = usuario.PreferenciaTimezone ?? "America/Sao_Paulo",
+                Privacidade = new ConfiguracaoPrivacidade
+                {
+                    ExibirEmail = usuario.ExibirEmail,
+                    ExibirTelefone = usuario.ExibirTelefone,
+                    ExibirDataNascimento = usuario.ExibirDataNascimento,
+                    ExibirEndereco = usuario.ExibirEndereco,
+                    PerfilPublico = usuario.PerfilPublico
+                },
+                Notificacoes = new ConfiguracaoNotificacao
+                {
+                    NotificacaoEmail = usuario.NotificacaoEmail,
+                    NotificacaoSms = usuario.NotificacaoSms,
+                    NotificacaoPush = usuario.NotificacaoPush
+                },
+                DataCriacao = usuario.DataCriacao,
+                DataAtualizacao = usuario.DataAtualizacao,
+                UltimoLogin = usuario.UltimoLogin
+            };
+
+            return Ok(perfil);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao obter perfil do usuário: {UsuarioId}", ObterUsuarioLogadoId());
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno ao obter perfil" });
+        }
+    }
+
+    /// <summary>
+    /// Atualiza perfil do usuário logado
+    /// </summary>
+    /// <param name="request">Dados para atualização do perfil</param>
+    /// <returns>Perfil atualizado</returns>
+    [HttpPut("perfil")]
+    [ProducesResponseType(typeof(PerfilUsuario), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] AtualizarPerfilRequest request)
+    {
+        try
+        {
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            
+            // Validar dados
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "DadosInvalidos", 
+                    Mensagem = "Dados fornecidos são inválidos",
+                    Detalhes = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()
+                });
+            }
+
+            var strategy = _context.Database.CreateExecutionStrategy();
+            var resultado = await strategy.ExecuteAsync(async () =>
+            {
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
+                    if (usuario == null)
+                    {
+                        throw new InvalidOperationException("Usuário não encontrado");
+                    }
+
+                    // Capturar dados antes da atualização
+                    var dadosAntes = JsonSerializer.Serialize(new
+                    {
+                        usuario.Nome,
+                        usuario.Sobrenome,
+                        usuario.PhoneNumber,
+                        usuario.Profissao,
+                        usuario.Departamento,
+                        usuario.Bio,
+                        usuario.DataNascimento,
+                        usuario.EnderecoCompleto,
+                        usuario.Cidade,
+                        usuario.Estado,
+                        usuario.Cep,
+                        usuario.TelefoneAlternativo,
+                        usuario.PreferenciaIdioma,
+                        usuario.PreferenciaTimezone
+                    });
+
+                    // Atualizar campos do perfil
+                    if (!string.IsNullOrEmpty(request.Nome))
+                        usuario.Nome = request.Nome;
+                    
+                    if (!string.IsNullOrEmpty(request.Sobrenome))
+                        usuario.Sobrenome = request.Sobrenome;
+                    
+                    if (!string.IsNullOrEmpty(request.Telefone))
+                        usuario.PhoneNumber = request.Telefone;
+                    
+                    if (!string.IsNullOrEmpty(request.Profissao))
+                        usuario.Profissao = request.Profissao;
+                    
+                    if (!string.IsNullOrEmpty(request.Departamento))
+                        usuario.Departamento = request.Departamento;
+                    
+                    if (!string.IsNullOrEmpty(request.Bio))
+                        usuario.Bio = request.Bio;
+                    
+                    if (request.DataNascimento.HasValue)
+                        usuario.DataNascimento = request.DataNascimento;
+                    
+                    if (!string.IsNullOrEmpty(request.EnderecoCompleto))
+                        usuario.EnderecoCompleto = request.EnderecoCompleto;
+                    
+                    if (!string.IsNullOrEmpty(request.Cidade))
+                        usuario.Cidade = request.Cidade;
+                    
+                    if (!string.IsNullOrEmpty(request.Estado))
+                        usuario.Estado = request.Estado;
+                    
+                    if (!string.IsNullOrEmpty(request.Cep))
+                        usuario.Cep = request.Cep;
+                    
+                    if (!string.IsNullOrEmpty(request.TelefoneAlternativo))
+                        usuario.TelefoneAlternativo = request.TelefoneAlternativo;
+                    
+                    if (!string.IsNullOrEmpty(request.PreferenciaIdioma))
+                        usuario.PreferenciaIdioma = request.PreferenciaIdioma;
+                    
+                    if (!string.IsNullOrEmpty(request.PreferenciaTimezone))
+                        usuario.PreferenciaTimezone = request.PreferenciaTimezone;
+
+                    // Atualizar nome completo
+                    usuario.NomeCompleto = $"{usuario.Nome} {usuario.Sobrenome}";
+                    usuario.DataAtualizacao = DateTime.UtcNow;
+
+                    // Salvar alterações
+                    _context.Users.Update(usuario);
+                    await _context.SaveChangesAsync();
+
+                    // Registrar auditoria
+                    var dadosDepois = JsonSerializer.Serialize(new
+                    {
+                        usuario.Nome,
+                        usuario.Sobrenome,
+                        usuario.PhoneNumber,
+                        usuario.Profissao,
+                        usuario.Departamento,
+                        usuario.Bio,
+                        usuario.DataNascimento,
+                        usuario.EnderecoCompleto,
+                        usuario.Cidade,
+                        usuario.Estado,
+                        usuario.Cep,
+                        usuario.TelefoneAlternativo,
+                        usuario.PreferenciaIdioma,
+                        usuario.PreferenciaTimezone
+                    });
+
+                    var registroAuditoria = new RegistroAuditoria
+                    {
+                        UsuarioId = usuarioLogadoId,
+                        Acao = "Perfil.Atualizar",
+                        Recurso = "Usuario",
+                        RecursoId = usuario.Id.ToString(),
+                        DadosAntes = dadosAntes,
+                        DadosDepois = dadosDepois,
+                        DataHora = DateTime.UtcNow,
+                        EnderecoIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                        UserAgent = Request.Headers.UserAgent.ToString(),
+                        Observacoes = "Perfil atualizado pelo próprio usuário"
+                    };
+
+                    _context.RegistrosAuditoria.Add(registroAuditoria);
+                    await _context.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    return usuario;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
+
+            _logger.LogInformation("✅ Perfil atualizado com sucesso - Usuário: {Id}", usuarioLogadoId);
+
+            // Retornar perfil atualizado
+            return await ObterMeuPerfil();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao atualizar perfil do usuário: {UsuarioId}", ObterUsuarioLogadoId());
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno ao atualizar perfil" });
+        }
+    }
+
+    /// <summary>
+    /// Atualiza configurações de privacidade do usuário
+    /// </summary>
+    /// <param name="request">Configurações de privacidade</param>
+    /// <returns>Confirmação da atualização</returns>
+    [HttpPut("perfil/privacidade")]
+    [ProducesResponseType(typeof(RespostaSucesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> AtualizarConfiguracoesPrivacidade([FromBody] ConfiguracaoPrivacidade request)
+    {
+        try
+        {
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            
+            var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro { Erro = "UsuarioNaoEncontrado", Mensagem = "Usuário não encontrado" });
+            }
+
+            // Capturar configurações antes
+            var configAntes = new
+            {
+                usuario.ExibirEmail,
+                usuario.ExibirTelefone,
+                usuario.ExibirDataNascimento,
+                usuario.ExibirEndereco,
+                usuario.PerfilPublico
+            };
+
+            // Atualizar configurações
+            usuario.ExibirEmail = request.ExibirEmail;
+            usuario.ExibirTelefone = request.ExibirTelefone;
+            usuario.ExibirDataNascimento = request.ExibirDataNascimento;
+            usuario.ExibirEndereco = request.ExibirEndereco;
+            usuario.PerfilPublico = request.PerfilPublico;
+            usuario.DataAtualizacao = DateTime.UtcNow;
+
+            _context.Users.Update(usuario);
+            await _context.SaveChangesAsync();
+
+            // Registrar auditoria
+            await RegistrarAuditoria("Perfil.ConfiguracaoPrivacidade", "Usuario", usuario.Id.ToString(),
+                "Configurações de privacidade atualizadas",
+                configAntes,
+                new
+                {
+                    usuario.ExibirEmail,
+                    usuario.ExibirTelefone,
+                    usuario.ExibirDataNascimento,
+                    usuario.ExibirEndereco,
+                    usuario.PerfilPublico
+                });
+
+            _logger.LogInformation("✅ Configurações de privacidade atualizadas - Usuário: {Id}", usuarioLogadoId);
+
+            return Ok(new RespostaSucesso
+            {
+                Sucesso = true,
+                Mensagem = "Configurações de privacidade atualizadas com sucesso"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao atualizar configurações de privacidade: {UsuarioId}", ObterUsuarioLogadoId());
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno" });
+        }
+    }
+
+    /// <summary>
+    /// Atualiza configurações de notificação do usuário
+    /// </summary>
+    /// <param name="request">Configurações de notificação</param>
+    /// <returns>Confirmação da atualização</returns>
+    [HttpPut("perfil/notificacoes")]
+    [ProducesResponseType(typeof(RespostaSucesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> AtualizarConfiguracoesNotificacao([FromBody] ConfiguracaoNotificacao request)
+    {
+        try
+        {
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            
+            var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro { Erro = "UsuarioNaoEncontrado", Mensagem = "Usuário não encontrado" });
+            }
+
+            // Capturar configurações antes
+            var configAntes = new
+            {
+                usuario.NotificacaoEmail,
+                usuario.NotificacaoSms,
+                usuario.NotificacaoPush
+            };
+
+            // Atualizar configurações
+            usuario.NotificacaoEmail = request.NotificacaoEmail;
+            usuario.NotificacaoSms = request.NotificacaoSms;
+            usuario.NotificacaoPush = request.NotificacaoPush;
+            usuario.DataAtualizacao = DateTime.UtcNow;
+
+            _context.Users.Update(usuario);
+            await _context.SaveChangesAsync();
+
+            // Registrar auditoria
+            await RegistrarAuditoria("Perfil.ConfiguracaoNotificacao", "Usuario", usuario.Id.ToString(),
+                "Configurações de notificação atualizadas",
+                configAntes,
+                new
+                {
+                    usuario.NotificacaoEmail,
+                    usuario.NotificacaoSms,
+                    usuario.NotificacaoPush
+                });
+
+            _logger.LogInformation("✅ Configurações de notificação atualizadas - Usuário: {Id}", usuarioLogadoId);
+
+            return Ok(new RespostaSucesso
+            {
+                Sucesso = true,
+                Mensagem = "Configurações de notificação atualizadas com sucesso"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao atualizar configurações de notificação: {UsuarioId}", ObterUsuarioLogadoId());
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno" });
+        }
+    }
+
+    /// <summary>
+    /// Faz upload da foto de perfil do usuário
+    /// </summary>
+    /// <param name="arquivo">Arquivo de imagem</param>
+    /// <returns>URL da foto de perfil</returns>
+    [HttpPost("perfil/foto")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UploadFotoPerfil(IFormFile arquivo)
+    {
+        try
+        {
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            
+            if (!_arquivoService.ValidarImagemPerfil(arquivo))
+            {
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "ArquivoInvalido", 
+                    Mensagem = "Arquivo de imagem inválido. Aceitos: JPG, PNG, WEBP até 5MB" 
+                });
+            }
+
+            var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro { Erro = "UsuarioNaoEncontrado", Mensagem = "Usuário não encontrado" });
+            }
+
+            // Excluir foto anterior se existir
+            if (!string.IsNullOrEmpty(usuario.CaminhoFotoPerfil))
+            {
+                await _arquivoService.ExcluirImagemPerfilAsync(usuario.CaminhoFotoPerfil);
+            }
+
+            // Salvar nova foto
+            var caminhoArquivo = await _arquivoService.SalvarImagemPerfilAsync(arquivo, usuarioLogadoId);
+            
+            // Atualizar usuário
+            usuario.CaminhoFotoPerfil = caminhoArquivo;
+            usuario.DataAtualizacao = DateTime.UtcNow;
+
+            _context.Users.Update(usuario);
+            await _context.SaveChangesAsync();
+
+            // Registrar auditoria
+            await RegistrarAuditoria("Perfil.FotoUpload", "Usuario", usuario.Id.ToString(),
+                "Foto de perfil atualizada",
+                new { FotoAnterior = usuario.CaminhoFotoPerfil },
+                new { NovaFoto = caminhoArquivo });
+
+            var urlSegura = _arquivoService.GerarUrlSegura(caminhoArquivo);
+
+            _logger.LogInformation("✅ Foto de perfil atualizada - Usuário: {Id}, Arquivo: {Caminho}", 
+                usuarioLogadoId, caminhoArquivo);
+
+            return Ok(new
+            {
+                sucesso = true,
+                mensagem = "Foto de perfil atualizada com sucesso",
+                urlFoto = urlSegura,
+                caminhoArquivo = caminhoArquivo
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao fazer upload da foto de perfil: {UsuarioId}", ObterUsuarioLogadoId());
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno no upload" });
+        }
+    }
+
+    /// <summary>
+    /// Remove a foto de perfil do usuário
+    /// </summary>
+    /// <returns>Confirmação da remoção</returns>
+    [HttpDelete("perfil/foto")]
+    [ProducesResponseType(typeof(RespostaSucesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RemoverFotoPerfil()
+    {
+        try
+        {
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            
+            var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro { Erro = "UsuarioNaoEncontrado", Mensagem = "Usuário não encontrado" });
+            }
+
+            if (string.IsNullOrEmpty(usuario.CaminhoFotoPerfil))
+            {
+                return BadRequest(new RespostaErro { Erro = "SemFoto", Mensagem = "Usuário não possui foto de perfil" });
+            }
+
+            var caminhoAnterior = usuario.CaminhoFotoPerfil;
+
+            // Excluir arquivo
+            await _arquivoService.ExcluirImagemPerfilAsync(usuario.CaminhoFotoPerfil);
+
+            // Atualizar usuário
+            usuario.CaminhoFotoPerfil = null;
+            usuario.DataAtualizacao = DateTime.UtcNow;
+
+            _context.Users.Update(usuario);
+            await _context.SaveChangesAsync();
+
+            // Registrar auditoria
+            await RegistrarAuditoria("Perfil.FotoRemover", "Usuario", usuario.Id.ToString(),
+                "Foto de perfil removida",
+                new { FotoRemovida = caminhoAnterior },
+                new { FotoAtual = (string?)null });
+
+            _logger.LogInformation("✅ Foto de perfil removida - Usuário: {Id}, Arquivo: {Caminho}", 
+                usuarioLogadoId, caminhoAnterior);
+
+            return Ok(new RespostaSucesso
+            {
+                Sucesso = true,
+                Mensagem = "Foto de perfil removida com sucesso"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao remover foto de perfil: {UsuarioId}", ObterUsuarioLogadoId());
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno" });
+        }
+    }
+
+    /// <summary>
+    /// Obtém foto de perfil de forma segura
+    /// </summary>
+    /// <param name="caminhoArquivo">Caminho do arquivo</param>
+    /// <param name="t">Timestamp</param>
+    /// <param name="h">Hash de segurança</param>
+    /// <returns>Arquivo de imagem</returns>
+    [HttpGet("perfil/imagem/{caminhoArquivo}")]
+    [AllowAnonymous] // Permite acesso sem autenticação para imagens públicas
+    public async Task<IActionResult> ObterImagemPerfil(string caminhoArquivo, [FromQuery] long t, [FromQuery] string h)
+    {
+        try
+        {
+            // Validar token de segurança (implementação básica)
+            var agora = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var diferenca = Math.Abs(agora - t);
+            
+            // Token válido por 1 hora
+            if (diferenca > 3600)
+            {
+                return BadRequest(new RespostaErro { Erro = "TokenExpirado", Mensagem = "Token de acesso expirado" });
+            }
+
+            var bytesImagem = await _arquivoService.ObterImagemPerfilAsync(caminhoArquivo);
+            
+            return File(bytesImagem, "image/jpeg");
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new RespostaErro { Erro = "ImagemNaoEncontrada", Mensagem = "Imagem não encontrada" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao obter imagem de perfil: {Caminho}", caminhoArquivo);
+            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno" });
+        }
+    }
 
     #region Métodos Auxiliares
 
@@ -1535,7 +2082,7 @@ public class UsuariosController : ControllerBase
     private int ObterUsuarioLogadoId()
     {
         var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        
+
         if (string.IsNullOrEmpty(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out var usuarioId))
         {
             throw new UnauthorizedAccessException("Token inválido ou usuário não identificado");

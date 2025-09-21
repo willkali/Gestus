@@ -28,8 +28,9 @@ public static class Inicializacao
         // Entity Framework e Identity
         services.AdicionarEntityFramework(configuration);
 
-        // ✅ ADICIONAR: Serviço de timezone
+        // ✅ ADICIONAR: Serviços personalizados
         services.AddScoped<ITimezoneService, TimezoneService>();
+        services.AddScoped<IArquivoService, ArquivoService>(); // ✅ ADICIONAR
 
         // Controllers e API
         services.AddControllers()
