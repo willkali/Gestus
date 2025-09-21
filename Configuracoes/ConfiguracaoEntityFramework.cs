@@ -19,11 +19,26 @@ public static class ConfiguracaoEntityFramework
             options.UseNpgsql(connectionString, npgsqlOptions =>
             {
                 npgsqlOptions.MigrationsAssembly("Gestus");
+                
+                // ✅ CORRIGIDO: Configurar retry strategy adequadamente
                 npgsqlOptions.EnableRetryOnFailure(
                     maxRetryCount: 3,
                     maxRetryDelay: TimeSpan.FromSeconds(5),
                     errorCodesToAdd: null);
+                
+                // ✅ ADICIONAR: Configurar timeout
+                npgsqlOptions.CommandTimeout(30);
             });
+
+            // ✅ ADICIONAR: Configurar warnings
+            options.ConfigureWarnings(warnings =>
+            {
+                warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning);
+                warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning);
+            });
+
+            // ✅ REMOVIDO: UseQuerySplittingBehavior não existe
+            // O query splitting será configurado no contexto quando necessário
 
             // Configurações de desenvolvimento
             if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
@@ -31,9 +46,6 @@ public static class ConfiguracaoEntityFramework
                 options.EnableSensitiveDataLogging();
                 options.EnableDetailedErrors();
             }
-
-            // ✅ REMOVIDO: UseQuerySplittingBehavior não existe neste contexto
-            // A configuração de QuerySplitting deve ser feita no DbContext OnConfiguring ou por query específica
 
             // Integração com OpenIddict
             options.UseOpenIddict();

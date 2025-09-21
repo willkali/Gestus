@@ -287,147 +287,122 @@ public class UsuariosController : ControllerBase
     {
         try
         {
-            // ✅ VERIFICAR PERMISSÃO
             if (!TemPermissao("Usuarios.Criar"))
             {
-                return Forbid("Permissão insuficiente para criar usuários");
+                return Forbid();
+            }
+
+            var validator = new CriarUsuarioValidator(_userManager);
+            var validationResult = await validator.ValidateAsync(request);
+            if (!validationResult.IsValid)
+            {
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "Dados inválidos", 
+                    Mensagem = "Os dados fornecidos são inválidos",
+                    Detalhes = validationResult.Errors.Select(e => e.ErrorMessage).ToList()
+                });
             }
 
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            _logger.LogInformation("👤 Criando usuário: {Email} - Solicitado por: {UsuarioLogadoId}",
-                request.Email, usuarioLogadoId);
+            _logger.LogInformation($"👤 Criando usuário: {request.Email} - Solicitado por: {usuarioLogadoId}");
 
-            // ✅ VALIDAÇÃO AVANÇADA
-            var validador = new CriarUsuarioValidator(_userManager);
-            var resultadoValidacao = await validador.ValidateAsync(request);
-
-            if (!resultadoValidacao.IsValid)
+            // ✅ CORRIGIDO: Usar ExecutionStrategy para transações
+            var strategy = _context.Database.CreateExecutionStrategy();
+            var resultado = await strategy.ExecuteAsync(async () =>
             {
-                return BadRequest(new RespostaErro
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    Erro = "DadosInvalidos",
-                    Mensagem = "Dados do usuário são inválidos",
-                    Detalhes = resultadoValidacao.Errors.Select(e => e.ErrorMessage).ToList()
-                });
-            }
-
-            // ✅ VERIFICAR SE EMAIL JÁ EXISTE
-            var usuarioExistente = await _userManager.FindByEmailAsync(request.Email);
-            if (usuarioExistente != null)
-            {
-                return BadRequest(new RespostaErro
-                {
-                    Erro = "EmailJaExiste",
-                    Mensagem = "Já existe um usuário com este email"
-                });
-            }
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
-
-            try
-            {
-                // ✅ CRIAR USUÁRIO
-                var novoUsuario = new Usuario
-                {
-                    UserName = request.Email,
-                    Email = request.Email,
-                    Nome = request.Nome,
-                    Sobrenome = request.Sobrenome,
-                    NomeCompleto = $"{request.Nome} {request.Sobrenome}",
-                    PhoneNumber = request.Telefone,
-                    EmailConfirmed = request.ConfirmarEmailImediatamente,
-                    PhoneNumberConfirmed = !string.IsNullOrEmpty(request.Telefone) && request.ConfirmarTelefoneImediatamente,
-                    Ativo = request.Ativo,
-                    Observacoes = request.Observacoes,
-                    DataCriacao = DateTime.UtcNow
-                };
-
-                var resultado = await _userManager.CreateAsync(novoUsuario, request.Senha);
-
-                if (!resultado.Succeeded)
-                {
-                    await transaction.RollbackAsync();
-
-                    return BadRequest(new RespostaErro
+                    // Criar usuário
+                    var usuario = new Usuario
                     {
-                        Erro = "ErroCriacaoUsuario",
-                        Mensagem = "Erro ao criar usuário",
-                        Detalhes = resultado.Errors.Select(e => e.Description).ToList()
-                    });
-                }
+                        UserName = request.Email,
+                        Email = request.Email,
+                        Nome = request.Nome,
+                        Sobrenome = request.Sobrenome,
+                        NomeCompleto = $"{request.Nome} {request.Sobrenome}",
+                        PhoneNumber = request.Telefone,
+                        EmailConfirmed = request.ConfirmarEmailImediatamente,
+                        PhoneNumberConfirmed = request.ConfirmarTelefoneImediatamente,
+                        Ativo = request.Ativo,
+                        Observacoes = request.Observacoes,
+                        DataCriacao = DateTime.UtcNow
+                    };
 
-                // ✅ ATRIBUIR PAPÉIS (se fornecidos)
-                if (request.Papeis?.Any() == true)
-                {
-                    // Verificar se pode gerenciar papéis
-                    if (!TemPermissao("Usuarios.GerenciarPapeis"))
+                    var resultadoCriacao = await _userManager.CreateAsync(usuario, request.Senha);
+                    if (!resultadoCriacao.Succeeded)
                     {
-                        await transaction.RollbackAsync();
-                        return Forbid("Permissão insuficiente para atribuir papéis");
+                        throw new InvalidOperationException($"Erro ao criar usuário: {string.Join(", ", resultadoCriacao.Errors.Select(e => e.Description))}");
                     }
 
-                    var papeisValidos = await _roleManager.Roles
-                        .Where(r => request.Papeis.Contains(r.Name!) && r.Ativo)
-                        .Select(r => r.Name!)
-                        .ToListAsync();
-
-                    if (papeisValidos.Any())
+                    // Atribuir papéis se fornecidos
+                    if (request.Papeis?.Any() == true)
                     {
-                        var resultadoPapeis = await _userManager.AddToRolesAsync(novoUsuario, papeisValidos);
-                        if (!resultadoPapeis.Succeeded)
+                        var papeisValidos = new List<string>();
+                        foreach (var papel in request.Papeis)
                         {
-                            await transaction.RollbackAsync();
-                            return BadRequest(new RespostaErro
+                            if (await _roleManager.RoleExistsAsync(papel))
                             {
-                                Erro = "ErroAtribuicaoPapeis",
-                                Mensagem = "Erro ao atribuir papéis ao usuário",
-                                Detalhes = resultadoPapeis.Errors.Select(e => e.Description).ToList()
-                            });
+                                papeisValidos.Add(papel);
+                            }
+                        }
+
+                        if (papeisValidos.Any())
+                        {
+                            await _userManager.AddToRolesAsync(usuario, papeisValidos);
                         }
                     }
-                }
 
-                // ✅ COMMIT DA TRANSAÇÃO
-                await transaction.CommitAsync();
-
-                // ✅ RECARREGAR USUÁRIO COM RELACIONAMENTOS
-                var usuarioCriado = await _context.Users
-                    .Include(u => u.UsuarioPapeis.Where(up => up.Ativo))
-                        .ThenInclude(up => up.Papel)
-                    .FirstAsync(u => u.Id == novoUsuario.Id);
-
-                // ✅ REGISTRAR AUDITORIA
-                await RegistrarAuditoria("Usuarios.Criar", "Usuarios", novoUsuario.Id.ToString(),
-                    $"Usuário criado: {novoUsuario.Email}",
-                    dadosDepois: new
+                    // Registrar auditoria
+                    var dadosAuditoria = JsonSerializer.Serialize(new
                     {
-                        Email = novoUsuario.Email,
-                        Nome = novoUsuario.Nome,
-                        Ativo = novoUsuario.Ativo,
+                        usuario.Email,
+                        usuario.Nome,
+                        usuario.Sobrenome,
+                        usuario.Ativo,
                         Papeis = request.Papeis ?? new List<string>()
                     });
 
-                _logger.LogInformation("✅ Usuário criado - ID: {Id}, Email: {Email}, Ativo: {Ativo}",
-                    novoUsuario.Id, novoUsuario.Email, novoUsuario.Ativo);
+                    var registroAuditoria = new RegistroAuditoria
+                    {
+                        UsuarioId = usuarioLogadoId,
+                        Acao = "Criar",
+                        Recurso = "Usuario",
+                        RecursoId = usuario.Id.ToString(),
+                        DadosDepois = dadosAuditoria,
+                        DataHora = DateTime.UtcNow,
+                        EnderecoIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                        UserAgent = Request.Headers.UserAgent.ToString(),
+                        Observacoes = $"Usuário {usuario.Email} criado"
+                    };
 
-                // ✅ RETORNAR DADOS COMPLETOS
-                var usuarioCompleto = await ObterDadosCompletos(novoUsuario.Id);
+                    _context.RegistrosAuditoria.Add(registroAuditoria);
+                    await _context.SaveChangesAsync();
 
-                return CreatedAtAction(nameof(ObterUsuario), new { id = novoUsuario.Id }, usuarioCompleto);
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                    await transaction.CommitAsync();
+
+                    _logger.LogInformation($"✅ Usuário criado com sucesso: {usuario.Email} (ID: {usuario.Id})");
+
+                    return usuario;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
+
+            var usuarioCompleto = await ObterUsuarioCompletoAsync(resultado.Id);
+            return CreatedAtAction(nameof(ObterUsuario), new { id = resultado.Id }, usuarioCompleto);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao criar usuário: {Email}", request.Email);
-            return StatusCode(500, new RespostaErro
-            {
-                Erro = "ErroInterno",
-                Mensagem = "Erro interno ao criar usuário"
+            _logger.LogError(ex, $"❌ Erro ao criar usuário: {request.Email}");
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "Erro interno", 
+                Mensagem = "Erro ao criar usuário" 
             });
         }
     }
@@ -447,288 +422,176 @@ public class UsuariosController : ControllerBase
     {
         try
         {
-            var usuarioLogadoId = ObterUsuarioLogadoId();
-
-            // ✅ VERIFICAR PERMISSÃO
-            if (!TemPermissao("Usuarios.Editar") && usuarioLogadoId != id)
+            if (!TemPermissao("Usuarios.Editar"))
             {
-                return Forbid("Permissão insuficiente para atualizar usuários");
+                return Forbid();
             }
 
-            _logger.LogInformation("✏️ Atualizando usuário {Id} por usuário {UsuarioLogadoId}", id, usuarioLogadoId);
-
-            // ✅ VALIDAÇÃO BÁSICA DO FLUENT VALIDATION
-            var validador = new AtualizarUsuarioValidator(_userManager);
-            var resultadoValidacao = await validador.ValidateAsync(request);
-            
-            if (!resultadoValidacao.IsValid)
+            var validator = new AtualizarUsuarioValidator(_userManager);
+            var validationResult = await validator.ValidateAsync(request);
+            if (!validationResult.IsValid)
             {
-                return BadRequest(new RespostaErro
-                {
-                    Erro = "DadosInvalidos",
-                    Mensagem = "Dados de atualização são inválidos",
-                    Detalhes = resultadoValidacao.Errors.Select(e => e.ErrorMessage).ToList()
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "Dados inválidos", 
+                    Mensagem = "Os dados fornecidos são inválidos",
+                    Detalhes = validationResult.Errors.Select(e => e.ErrorMessage).ToList()
                 });
             }
 
-            // ✅ BUSCAR USUÁRIO
-            var usuario = await _userManager.FindByIdAsync(id.ToString());
-            if (usuario == null)
+            // ✅ CORRIGIDO: Usar ExecutionStrategy para transações
+            var strategy = _context.Database.CreateExecutionStrategy();
+            var resultado = await strategy.ExecuteAsync(async () =>
             {
-                return NotFound(new RespostaErro
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    Erro = "UsuarioNaoEncontrado",
-                    Mensagem = "Usuário não encontrado"
-                });
-            }
-
-            // ✅ VALIDAÇÃO MANUAL DE EMAIL ÚNICO (se fornecido)
-            if (!string.IsNullOrEmpty(request.Email) && request.Email != usuario.Email)
-            {
-                var usuarioComEmail = await _userManager.FindByEmailAsync(request.Email);
-                if (usuarioComEmail != null && usuarioComEmail.Id != id)
-                {
-                    return BadRequest(new RespostaErro
+                    var usuario = await _userManager.FindByIdAsync(id.ToString());
+                    if (usuario == null)
                     {
-                        Erro = "EmailJaExiste",
-                        Mensagem = "Já existe outro usuário com este email"
+                        throw new InvalidOperationException("Usuário não encontrado");
+                    }
+
+                    // Capturar dados antes da atualização para auditoria
+                    var dadosAntes = JsonSerializer.Serialize(new
+                    {
+                        usuario.Email,
+                        usuario.Nome,
+                        usuario.Sobrenome,
+                        usuario.PhoneNumber,
+                        usuario.Ativo
                     });
-                }
-            }
 
-            // ✅ VALIDAÇÕES DE SEGURANÇA
-            if (request.Ativo == false && usuario.Id == usuarioLogadoId)
-            {
-                return BadRequest(new RespostaErro
-                {
-                    Erro = "AutoDesativacao",
-                    Mensagem = "Não é possível desativar seu próprio usuário"
-                });
-            }
-
-            // ✅ VERIFICAR SENHA ATUAL SE TENTANDO ALTERAR SENHA
-            if (!string.IsNullOrEmpty(request.NovaSenha))
-            {
-                // Se é o próprio usuário alterando, precisa da senha atual
-                if (usuarioLogadoId == id && string.IsNullOrEmpty(request.SenhaAtual))
-                {
-                    return BadRequest(new RespostaErro
+                    // Verificar unicidade do email se foi alterado
+                    if (!string.IsNullOrEmpty(request.Email) && request.Email != usuario.Email)
                     {
-                        Erro = "SenhaAtualObrigatoria",
-                        Mensagem = "Senha atual é obrigatória para alterar a própria senha"
-                    });
-                }
-
-                // Verificar senha atual se fornecida
-                if (!string.IsNullOrEmpty(request.SenhaAtual))
-                {
-                    var senhaValida = await _userManager.CheckPasswordAsync(usuario, request.SenhaAtual);
-                    if (!senhaValida)
-                    {
-                        return BadRequest(new RespostaErro
+                        var usuarioExistente = await _userManager.FindByEmailAsync(request.Email);
+                        if (usuarioExistente != null)
                         {
-                            Erro = "SenhaAtualIncorreta",
-                            Mensagem = "Senha atual está incorreta"
-                        });
+                            throw new InvalidOperationException("Já existe um usuário com este email");
+                        }
                     }
-                }
-            }
 
-            // ✅ CAPTURAR DADOS ANTES DA ALTERAÇÃO (para auditoria)
-            var dadosAntes = new
-            {
-                usuario.Email,
-                usuario.Nome,
-                usuario.Sobrenome,
-                usuario.PhoneNumber,
-                usuario.Ativo,
-                usuario.EmailConfirmed,
-                usuario.PhoneNumberConfirmed,
-                usuario.Observacoes
-            };
-
-            // ✅ APLICAR ALTERAÇÕES
-            bool alterado = false;
-
-            if (!string.IsNullOrEmpty(request.Email) && request.Email != usuario.Email)
-            {
-                usuario.Email = request.Email;
-                usuario.UserName = request.Email;
-                alterado = true;
-            }
-
-            if (!string.IsNullOrEmpty(request.Nome) && request.Nome != usuario.Nome)
-            {
-                usuario.Nome = request.Nome;
-                alterado = true;
-            }
-
-            if (!string.IsNullOrEmpty(request.Sobrenome) && request.Sobrenome != usuario.Sobrenome)
-            {
-                usuario.Sobrenome = request.Sobrenome;
-                alterado = true;
-            }
-
-            if (!string.IsNullOrEmpty(request.Telefone) && request.Telefone != usuario.PhoneNumber)
-            {
-                usuario.PhoneNumber = request.Telefone;
-                alterado = true;
-            }
-
-            if (request.Ativo.HasValue && request.Ativo != usuario.Ativo)
-            {
-                usuario.Ativo = request.Ativo.Value;
-                alterado = true;
-            }
-
-            if (!string.IsNullOrEmpty(request.Observacoes) && request.Observacoes != usuario.Observacoes)
-            {
-                usuario.Observacoes = request.Observacoes;
-                alterado = true;
-            }
-
-            // ✅ CONFIRMAÇÕES ADMINISTRATIVAS
-            if (request.ConfirmarEmailImediatamente && !usuario.EmailConfirmed)
-            {
-                usuario.EmailConfirmed = true;
-                alterado = true;
-            }
-
-            if (request.ConfirmarTelefoneImediatamente && !usuario.PhoneNumberConfirmed)
-            {
-                usuario.PhoneNumberConfirmed = true;
-                alterado = true;
-            }
-
-            // ✅ ATUALIZAR METADADOS SE HOUVE ALTERAÇÃO
-            if (alterado)
-            {
-                usuario.DataAtualizacao = DateTime.UtcNow;
-                usuario.NomeCompleto = $"{usuario.Nome} {usuario.Sobrenome}";
-            }
-
-            // ✅ ALTERAR SENHA SE SOLICITADO
-            if (!string.IsNullOrEmpty(request.NovaSenha))
-            {
-                IdentityResult resultadoSenha;
-
-                if (!string.IsNullOrEmpty(request.SenhaAtual))
-                {
-                    // Usar ChangePasswordAsync se temos a senha atual
-                    resultadoSenha = await _userManager.ChangePasswordAsync(usuario, request.SenhaAtual, request.NovaSenha);
-                }
-                else
-                {
-                    // Usar ResetPasswordAsync se é admin alterando sem senha atual
-                    var token = await _userManager.GeneratePasswordResetTokenAsync(usuario);
-                    resultadoSenha = await _userManager.ResetPasswordAsync(usuario, token, request.NovaSenha);
-                }
-
-                if (!resultadoSenha.Succeeded)
-                {
-                    return BadRequest(new RespostaErro
+                    // Atualizar campos
+                    if (!string.IsNullOrEmpty(request.Email))
                     {
-                        Erro = "ErroAlteracaoSenha",
-                        Mensagem = "Erro ao alterar senha",
-                        Detalhes = resultadoSenha.Errors.Select(e => e.Description).ToList()
+                        usuario.Email = request.Email;
+                        usuario.UserName = request.Email;
+                    }
+                    if (!string.IsNullOrEmpty(request.Nome))
+                        usuario.Nome = request.Nome;
+                    if (!string.IsNullOrEmpty(request.Sobrenome))
+                        usuario.Sobrenome = request.Sobrenome;
+                    if (!string.IsNullOrEmpty(request.Telefone))
+                        usuario.PhoneNumber = request.Telefone;
+                    if (request.Ativo.HasValue)
+                        usuario.Ativo = request.Ativo.Value;
+                    if (!string.IsNullOrEmpty(request.Observacoes))
+                        usuario.Observacoes = request.Observacoes;
+
+                    usuario.NomeCompleto = $"{usuario.Nome} {usuario.Sobrenome}";
+                    usuario.DataAtualizacao = DateTime.UtcNow;
+
+                    if (request.ConfirmarEmailImediatamente)
+                        usuario.EmailConfirmed = true;
+                    if (request.ConfirmarTelefoneImediatamente)
+                        usuario.PhoneNumberConfirmed = true;
+
+                    // Atualizar senha se fornecida
+                    if (!string.IsNullOrEmpty(request.NovaSenha))
+                    {
+                        var token = await _userManager.GeneratePasswordResetTokenAsync(usuario);
+                        var resultadoSenha = await _userManager.ResetPasswordAsync(usuario, token, request.NovaSenha);
+                        if (!resultadoSenha.Succeeded)
+                        {
+                            throw new InvalidOperationException($"Erro ao atualizar senha: {string.Join(", ", resultadoSenha.Errors.Select(e => e.Description))}");
+                        }
+                    }
+
+                    var resultadoAtualizacao = await _userManager.UpdateAsync(usuario);
+                    if (!resultadoAtualizacao.Succeeded)
+                    {
+                        throw new InvalidOperationException($"Erro ao atualizar usuário: {string.Join(", ", resultadoAtualizacao.Errors.Select(e => e.Description))}");
+                    }
+
+                    // Gerenciar papéis se fornecidos
+                    if (request.Papeis != null)
+                    {
+                        var papeisAtuais = await _userManager.GetRolesAsync(usuario);
+                        await _userManager.RemoveFromRolesAsync(usuario, papeisAtuais);
+
+                        var papeisValidos = new List<string>();
+                        foreach (var papel in request.Papeis)
+                        {
+                            if (await _roleManager.RoleExistsAsync(papel))
+                            {
+                                papeisValidos.Add(papel);
+                            }
+                        }
+
+                        if (papeisValidos.Any())
+                        {
+                            await _userManager.AddToRolesAsync(usuario, papeisValidos);
+                        }
+                    }
+
+                    // Registrar auditoria
+                    var dadosDepois = JsonSerializer.Serialize(new
+                    {
+                        usuario.Email,
+                        usuario.Nome,
+                        usuario.Sobrenome,
+                        usuario.PhoneNumber,
+                        usuario.Ativo
                     });
-                }
 
-                alterado = true;
-            }
-
-            // ✅ SALVAR ALTERAÇÕES DO USUÁRIO
-            IdentityResult? resultadoAtualizacao = null;
-            
-            if (alterado)
-            {
-                resultadoAtualizacao = await _userManager.UpdateAsync(usuario);
-                
-                if (!resultadoAtualizacao.Succeeded)
-                {
-                    return BadRequest(new RespostaErro
+                    var usuarioLogadoId = ObterUsuarioLogadoId();
+                    var registroAuditoria = new RegistroAuditoria
                     {
-                        Erro = "ErroAtualizacao",
-                        Mensagem = "Erro ao atualizar usuário",
-                        Detalhes = resultadoAtualizacao.Errors.Select(e => e.Description).ToList()
-                    });
-                }
-            }
+                        UsuarioId = usuarioLogadoId,
+                        Acao = "Atualizar",
+                        Recurso = "Usuario",
+                        RecursoId = usuario.Id.ToString(),
+                        DadosAntes = dadosAntes,
+                        DadosDepois = dadosDepois,
+                        DataHora = DateTime.UtcNow,
+                        EnderecoIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                        UserAgent = Request.Headers.UserAgent.ToString(),
+                        Observacoes = $"Usuário {usuario.Email} atualizado"
+                    };
 
-            // ✅ GERENCIAR PAPÉIS SE ESPECIFICADOS
-            if (request.Papeis != null)
-            {
-                if (!TemPermissao("Usuarios.GerenciarPapeis"))
+                    _context.RegistrosAuditoria.Add(registroAuditoria);
+                    await _context.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    return usuario;
+                }
+                catch
                 {
-                    return Forbid("Permissão insuficiente para gerenciar papéis");
+                    await transaction.RollbackAsync();
+                    throw;
                 }
+            });
 
-                var papeisAtuais = await _userManager.GetRolesAsync(usuario);
-                var papeisRemover = papeisAtuais.Except(request.Papeis).ToList();
-                var papeisAdicionar = request.Papeis.Except(papeisAtuais).ToList();
-
-                // Remover papéis
-                if (papeisRemover.Any())
-                {
-                    var resultadoRemocao = await _userManager.RemoveFromRolesAsync(usuario, papeisRemover);
-                    if (!resultadoRemocao.Succeeded)
-                    {
-                        _logger.LogWarning("⚠️ Erro ao remover papéis do usuário {Id}: {Erros}", 
-                            id, string.Join(", ", resultadoRemocao.Errors.Select(e => e.Description)));
-                    }
-                }
-
-                // Adicionar papéis
-                if (papeisAdicionar.Any())
-                {
-                    var resultadoAdicao = await _userManager.AddToRolesAsync(usuario, papeisAdicionar);
-                    if (!resultadoAdicao.Succeeded)
-                    {
-                        _logger.LogWarning("⚠️ Erro ao adicionar papéis ao usuário {Id}: {Erros}", 
-                            id, string.Join(", ", resultadoAdicao.Errors.Select(e => e.Description)));
-                    }
-                }
-
-                if (papeisRemover.Any() || papeisAdicionar.Any())
-                {
-                    await AtualizarMetadadosPapeis(usuario.Id, papeisAdicionar, usuarioLogadoId);
-                }
-            }
-
-            // ✅ RECARREGAR USUÁRIO COM DADOS ATUALIZADOS
-            var usuarioAtualizado = await ObterUsuarioCompletoAsync(usuario.Id);
-
-            // ✅ CAPTURAR DADOS DEPOIS (para auditoria)
-            var dadosDepois = new
-            {
-                usuarioAtualizado.Email,
-                usuarioAtualizado.Nome,
-                usuarioAtualizado.Sobrenome,
-                Telefone = usuarioAtualizado.Telefone,
-                usuarioAtualizado.Ativo,
-                EmailConfirmado = usuarioAtualizado.EmailConfirmado,
-                TelefoneConfirmado = usuarioAtualizado.TelefoneConfirmado,
-                usuarioAtualizado.Observacoes,
-                Papeis = usuarioAtualizado.Papeis.Select(p => p.Nome).ToList()
-            };
-
-            // ✅ REGISTRAR AUDITORIA
-            await RegistrarAuditoria("Usuarios.Atualizar", "Usuarios", id.ToString(), 
-                $"Usuário atualizado: {usuarioAtualizado.Email}",
-                dadosAntes, dadosDepois);
-
-            _logger.LogInformation("✅ Usuário {Id} atualizado com sucesso por {UsuarioLogadoId}", 
-                id, usuarioLogadoId);
-
-            return Ok(usuarioAtualizado);
+            var usuarioCompleto = await ObterUsuarioCompletoAsync(resultado.Id);
+            return Ok(usuarioCompleto);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("não encontrado"))
+        {
+            return NotFound(new RespostaErro { Erro = "Usuário não encontrado", Mensagem = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new RespostaErro { Erro = "Dados inválidos", Mensagem = ex.Message });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao atualizar usuário {Id}", id);
-            return StatusCode(500, new RespostaErro
-            {
-                Erro = "ErroInterno",
-                Mensagem = "Erro interno ao atualizar usuário"
+            _logger.LogError(ex, $"❌ Erro ao atualizar usuário: {id}");
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "Erro interno", 
+                Mensagem = "Erro ao atualizar usuário" 
             });
         }
     }
@@ -773,7 +636,7 @@ public class UsuariosController : ControllerBase
                     .ThenInclude(up => up.Papel)
                 .Include(u => u.UsuarioGrupos.Where(ug => ug.Ativo))
                     .ThenInclude(ug => ug.Grupo)
-                .Include(u => u.RegistrosAuditoria.Take(5)) // Apenas alguns registros para validação
+                .Include(u => u.RegistrosAuditoria.Take(5))
                 .FirstOrDefaultAsync(u => u.Id == id);
 
             if (usuarioExistente == null)
@@ -813,53 +676,72 @@ public class UsuariosController : ControllerBase
                     .CountAsync()
             };
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
-
-            try
+            // ✅ CORRIGIDO: Usar ExecutionStrategy para transações
+            var strategy = _context.Database.CreateExecutionStrategy();
+            var resultado = await strategy.ExecuteAsync(async () =>
             {
-                string mensagemSucesso;
-                string acaoAuditoria;
-
-                if (exclusaoPermanente)
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    // ✅ HARD DELETE - EXCLUSÃO PERMANENTE
-                    await RealizarExclusaoPermanente(usuarioExistente);
-                    mensagemSucesso = $"Usuário {usuarioExistente.Email} excluído permanentemente do sistema";
-                    acaoAuditoria = "Usuarios.ExcluirPermanentemente";
-                }
-                else
-                {
-                    // ✅ SOFT DELETE - DESATIVAÇÃO
-                    await RealizarDesativacao(usuarioExistente);
-                    mensagemSucesso = $"Usuário {usuarioExistente.Email} desativado com sucesso";
-                    acaoAuditoria = "Usuarios.Desativar";
-                }
+                    string mensagemSucesso;
+                    string acaoAuditoria;
 
-                // ✅ COMMIT DA TRANSAÇÃO
-                await transaction.CommitAsync();
-
-                // ✅ REGISTRAR AUDITORIA
-                await RegistrarAuditoria(acaoAuditoria, "Usuarios", id.ToString(),
-                    mensagemSucesso, dadosAntes, new
+                    if (exclusaoPermanente)
                     {
-                        ExclusaoPermanente = exclusaoPermanente,
-                        DataOperacao = DateTime.UtcNow
-                    });
+                        // ✅ HARD DELETE - EXCLUSÃO PERMANENTE
+                        await RealizarExclusaoPermanente(usuarioExistente);
+                        mensagemSucesso = $"Usuário {usuarioExistente.Email} excluído permanentemente do sistema";
+                        acaoAuditoria = "Usuarios.ExcluirPermanentemente";
+                    }
+                    else
+                    {
+                        // ✅ SOFT DELETE - DESATIVAÇÃO
+                        await RealizarDesativacao(usuarioExistente);
+                        mensagemSucesso = $"Usuário {usuarioExistente.Email} desativado com sucesso";
+                        acaoAuditoria = "Usuarios.Desativar";
+                    }
 
-                _logger.LogInformation("✅ {TipoOperacao} realizada - ID: {Id}, Email: {Email}",
-                    exclusaoPermanente ? "Exclusão permanente" : "Desativação", id, usuarioExistente.Email);
+                    // ✅ REGISTRAR AUDITORIA DENTRO DA TRANSAÇÃO
+                    var registroAuditoria = new RegistroAuditoria
+                    {
+                        UsuarioId = usuarioLogadoId,
+                        Acao = acaoAuditoria,
+                        Recurso = "Usuarios",
+                        RecursoId = id.ToString(),
+                        DadosAntes = System.Text.Json.JsonSerializer.Serialize(dadosAntes),
+                        DadosDepois = System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            ExclusaoPermanente = exclusaoPermanente,
+                            DataOperacao = DateTime.UtcNow
+                        }),
+                        DataHora = DateTime.UtcNow,
+                        EnderecoIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                        UserAgent = Request.Headers.UserAgent.ToString(),
+                        Observacoes = mensagemSucesso
+                    };
 
-                return Ok(new RespostaSucesso
+                    _context.RegistrosAuditoria.Add(registroAuditoria);
+                    await _context.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    return mensagemSucesso;
+                }
+                catch
                 {
-                    Sucesso = true,
-                    Mensagem = mensagemSucesso
-                });
-            }
-            catch
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
+
+            _logger.LogInformation("✅ {TipoOperacao} realizada - ID: {Id}, Email: {Email}",
+                exclusaoPermanente ? "Exclusão permanente" : "Desativação", id, usuarioExistente.Email);
+
+            return Ok(new RespostaSucesso
             {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                Sucesso = true,
+                Mensagem = resultado
+            });
         }
         catch (Exception ex)
         {
@@ -2165,13 +2047,8 @@ public class UsuariosController : ControllerBase
             usuarioGrupo.Ativo = false;
         }
 
-        // ✅ SALVAR ALTERAÇÕES
-        var resultado = await _userManager.UpdateAsync(usuario);
-        if (!resultado.Succeeded)
-        {
-            throw new InvalidOperationException($"Erro ao desativar usuário: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
-        }
-
+        // ✅ CORRIGIDO: NÃO usar UserManager dentro de transação - salvar direto pelo contexto
+        _context.Users.Update(usuario);
         await _context.SaveChangesAsync();
     }
 
@@ -2182,18 +2059,7 @@ public class UsuariosController : ControllerBase
     {
         // ✅ REMOVER RELACIONAMENTOS PRIMEIRO (ordem importante)
 
-        // 1. Remover de papéis
-        var papeis = await _userManager.GetRolesAsync(usuario);
-        if (papeis.Any())
-        {
-            var resultado = await _userManager.RemoveFromRolesAsync(usuario, papeis);
-            if (!resultado.Succeeded)
-            {
-                throw new InvalidOperationException($"Erro ao remover papéis: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
-            }
-        }
-
-        // 2. Remover relacionamentos de grupos
+        // 1. Remover relacionamentos de grupos
         var usuarioGrupos = await _context.Set<UsuarioGrupo>()
             .Where(ug => ug.UsuarioId == usuario.Id)
             .ToListAsync();
@@ -2203,32 +2069,17 @@ public class UsuariosController : ControllerBase
             _context.Set<UsuarioGrupo>().RemoveRange(usuarioGrupos);
         }
 
-        // 3. Remover claims personalizados
-        var claims = await _userManager.GetClaimsAsync(usuario);
-        if (claims.Any())
+        // 2. Remover relacionamentos de papéis
+        var usuarioPapeis = await _context.Set<UsuarioPapel>()
+            .Where(up => up.UserId == usuario.Id)
+            .ToListAsync();
+
+        if (usuarioPapeis.Any())
         {
-            var resultado = await _userManager.RemoveClaimsAsync(usuario, claims);
-            if (!resultado.Succeeded)
-            {
-                throw new InvalidOperationException($"Erro ao remover claims: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
-            }
+            _context.Set<UsuarioPapel>().RemoveRange(usuarioPapeis);
         }
 
-        // 4. Remover logins externos
-        var logins = await _userManager.GetLoginsAsync(usuario);
-        if (logins.Any())
-        {
-            foreach (var login in logins)
-            {
-                var resultado = await _userManager.RemoveLoginAsync(usuario, login.LoginProvider, login.ProviderKey);
-                if (!resultado.Succeeded)
-                {
-                    throw new InvalidOperationException($"Erro ao remover login externo: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
-                }
-            }
-        }
-
-        // 5. ⚠️ IMPORTANTE: Atualizar registros de auditoria (não remover, apenas desassociar)
+        // 3. ⚠️ IMPORTANTE: Atualizar registros de auditoria (não remover, apenas desassociar)
         var registrosAuditoria = await _context.RegistrosAuditoria
             .Where(ra => ra.UsuarioId == usuario.Id)
             .ToListAsync();
@@ -2246,7 +2097,7 @@ public class UsuariosController : ControllerBase
             }
         }
 
-        // 6. Atualizar registros onde este usuário atribuiu papéis
+        // 4. Atualizar registros onde este usuário atribuiu papéis
         var atribuicoesFeitas = await _context.Set<UsuarioPapel>()
             .Where(up => up.AtribuidoPorId == usuario.Id)
             .ToListAsync();
@@ -2256,15 +2107,30 @@ public class UsuariosController : ControllerBase
             atribuicao.AtribuidoPorId = null; // Desassociar mas manter histórico
         }
 
-        // 7. Salvar alterações nos relacionamentos
-        await _context.SaveChangesAsync();
-
-        // 8. Finalmente, excluir o usuário
-        var resultadoExclusao = await _userManager.DeleteAsync(usuario);
-        if (!resultadoExclusao.Succeeded)
+        // 5. Remover claims, logins e tokens do Identity
+        var userClaims = await _context.UserClaims.Where(uc => uc.UserId == usuario.Id).ToListAsync();
+        if (userClaims.Any())
         {
-            throw new InvalidOperationException($"Erro ao excluir usuário: {string.Join(", ", resultadoExclusao.Errors.Select(e => e.Description))}");
+            _context.UserClaims.RemoveRange(userClaims);
         }
+
+        var userLogins = await _context.UserLogins.Where(ul => ul.UserId == usuario.Id).ToListAsync();
+        if (userLogins.Any())
+        {
+            _context.UserLogins.RemoveRange(userLogins);
+        }
+
+        var userTokens = await _context.UserTokens.Where(ut => ut.UserId == usuario.Id).ToListAsync();
+        if (userTokens.Any())
+        {
+            _context.UserTokens.RemoveRange(userTokens);
+        }
+
+        // 6. Finalmente, excluir o usuário
+        _context.Users.Remove(usuario);
+        
+        // 7. Salvar todas as alterações
+        await _context.SaveChangesAsync();
     }
 
     #endregion
