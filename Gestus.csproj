@@ -12,6 +12,7 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- ASP.NET Core Web API & Utilitários -->
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.20" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="8.1.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.9" />
