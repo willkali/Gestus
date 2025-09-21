@@ -20,6 +20,11 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
     public DbSet<RegistroAuditoria> RegistrosAuditoria => Set<RegistroAuditoria>();
     public DbSet<UsuarioPapel> UsuarioPapeis => Set<UsuarioPapel>();
     public DbSet<Papel> Papeis => Set<Papel>();
+    public DbSet<ConfiguracaoEmail> ConfiguracoesEmail => Set<ConfiguracaoEmail>();
+    public DbSet<TemplateEmail> TemplatesEmail => Set<TemplateEmail>();
+    public DbSet<TemplateEmailPersonalizado> TemplatesEmailPersonalizados => Set<TemplateEmailPersonalizado>();
+    public DbSet<ChaveEncriptacao> ChavesEncriptacao => Set<ChaveEncriptacao>();
+    public DbSet<LogUsoChave> LogsUsoChave => Set<LogUsoChave>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -39,13 +44,13 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
 
         // Integração com OpenIddict
         builder.UseOpenIddict();
+
+        // Configurações de entidades de email
+        ConfigurarEntidadesEmail(builder);
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-    {
-        // ✅ REMOVIDO: UseQuerySplittingBehavior não existe
-        // ✅ REMOVIDO: Configurações duplicadas do UseNpgsql
-        
+    {        
         // O OnConfiguring não deve fazer configurações quando já foram feitas no DI
         // As configurações já são feitas em ConfiguracaoEntityFramework.cs
         base.OnConfiguring(optionsBuilder);
@@ -235,5 +240,97 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
 
         builder.Entity<RegistroAuditoria>()
                .HasIndex(ra => ra.UsuarioId);
+    }
+
+    private void ConfigurarEntidadesEmail(ModelBuilder builder)
+    {
+        // ConfiguracaoEmail
+        builder.Entity<ConfiguracaoEmail>(entity =>
+        {
+            entity.ToTable("ConfiguracoesEmail");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ServidorSmtp).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.EmailRemetente).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.NomeRemetente).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.SenhaEncriptada).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        // TemplateEmail
+        builder.Entity<TemplateEmail>(entity =>
+        {
+            entity.ToTable("TemplatesEmail");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Tipo).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Assunto).HasMaxLength(300).IsRequired();
+            entity.Property(e => e.CorpoHtml).HasColumnType("text").IsRequired();
+            entity.Property(e => e.CorpoTexto).HasColumnType("text");
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(te => te.ConfiguracaoEmail)
+                  .WithMany(ce => ce.Templates)
+                  .HasForeignKey(te => te.ConfiguracaoEmailId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // TemplateEmailPersonalizado
+        builder.Entity<TemplateEmailPersonalizado>(entity =>
+        {
+            entity.ToTable("TemplatesEmailPersonalizados");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Nome).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Tipo).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Assunto).HasMaxLength(300).IsRequired();
+            entity.Property(e => e.CorpoHtml).HasColumnType("text").IsRequired();
+            entity.Property(e => e.CorpoTexto).HasColumnType("text");
+            entity.Property(e => e.Descricao).HasMaxLength(500);
+            entity.Property(e => e.VariaveisObrigatorias).HasColumnType("text");
+            entity.Property(e => e.VariaveisOpcionais).HasColumnType("text");
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(tep => tep.CriadoPor)
+                  .WithMany()
+                  .HasForeignKey(tep => tep.CriadoPorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(tep => tep.AtualizadoPor)
+                  .WithMany()
+                  .HasForeignKey(tep => tep.AtualizadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ChaveEncriptacao
+        builder.Entity<ChaveEncriptacao>(entity =>
+        {
+            entity.ToTable("ChavesEncriptacao");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Nome).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ChaveEncriptada).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.Observacoes).HasMaxLength(500);
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => new { e.Nome, e.Versao }).IsUnique();
+            entity.HasIndex(e => new { e.Nome, e.Ativa });
+        });
+
+        // LogUsoChave
+        builder.Entity<LogUsoChave>(entity =>
+        {
+            entity.ToTable("LogsUsoChave");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Operacao).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Contexto).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Identificador).HasMaxLength(200);
+            entity.Property(e => e.MensagemErro).HasMaxLength(500);
+            entity.Property(e => e.DataHora).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(luc => luc.ChaveEncriptacao)
+                  .WithMany()
+                  .HasForeignKey(luc => luc.ChaveEncriptacaoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.DataHora);
+            entity.HasIndex(e => new { e.Contexto, e.Operacao });
+        });
     }
 }

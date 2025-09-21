@@ -28,9 +28,14 @@ public static class Inicializacao
         // Entity Framework e Identity
         services.AdicionarEntityFramework(configuration);
 
-        // ✅ ADICIONAR: Serviços personalizados
+        // ADICIONAR: Serviços personalizados
         services.AddScoped<ITimezoneService, TimezoneService>();
-        services.AddScoped<IArquivoService, ArquivoService>(); // ✅ ADICIONAR
+        services.AddScoped<IArquivoService, ArquivoService>();
+
+        // SERVIÇOS DE CRIPTOGRAFIA E EMAIL
+        services.AddScoped<IChaveVersaoService, ChaveVersaoService>();
+        services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<ITemplateService, TemplateService>();
 
         // Controllers e API
         services.AddControllers()
