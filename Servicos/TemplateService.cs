@@ -455,11 +455,17 @@ public class TemplateService : ITemplateService
             var configuracaoEmail = await _context.Set<ConfiguracaoEmail>()
                 .FirstOrDefaultAsync(c => c.Ativo);
 
+            // Se não houver ativa, tentar usar qualquer configuração existente (mesmo inativa)
+            if (configuracaoEmail == null)
+            {
+                configuracaoEmail = await _context.Set<ConfiguracaoEmail>().FirstOrDefaultAsync();
+            }
+
+            // Criar configuração padrão SOMENTE se não existir nenhuma (ativa ou inativa)
             if (configuracaoEmail == null)
             {
                 _logger.LogInformation("⚠️ Nenhuma configuração de email encontrada. Criando configuração padrão...");
                 
-                // Criar configuração padrão (temporária)
                 configuracaoEmail = new ConfiguracaoEmail
                 {
                     ServidorSmtp = "smtp.gmail.com",

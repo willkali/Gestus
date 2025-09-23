@@ -10,4 +10,7 @@ public class EstatisticasBusca
     public int TotalPapeis { get; set; }
     public int TotalGrupos { get; set; }
     public int TotalPermissoes { get; set; }
+    public int TotalAplicacoes { get; set; }
+    public int AplicacoesAprovadas { get; set; }
+    public int AplicacoesPendentes { get; set; }
 }

@@ -258,7 +258,13 @@ public class TokenController : ControllerBase
             identity.AddClaim(new Claim(OpenIddictConstants.Claims.Role, papel));
         }
 
-        // Obter permissões através dos papéis
+        // Se for SuperAdmin, conceder coringa de permissão total
+        if (papeis.Contains("SuperAdmin"))
+        {
+            identity.AddClaim(new Claim("permissao", "*"));
+        }
+
+        // Obter permissões através dos papéis (mantido para perfis não SuperAdmin)
         var permissoes = await ObterPermissoesUsuario(usuario.Id);
         foreach (var permissao in permissoes)
         {

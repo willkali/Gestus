@@ -56,4 +56,25 @@ public class AtualizarUsuarioRequest
     /// Lista de papéis para atribuir ao usuário (substitui os existentes)
     /// </summary>
     public List<string>? Papeis { get; set; }
+
+    /// <summary>
+    /// Lista de IDs das aplicações para o usuário (substitui as existentes)
+    /// </summary>
+    public List<int>? AplicacoesIds { get; set; }
+    
+    /// <summary>
+    /// Tipo de operação para aplicações: "manter", "substituir", "adicionar", "remover"
+    /// </summary>
+    public string OperacaoAplicacoes { get; set; } = "manter";
+    
+    /// <summary>
+    /// Se deve aprovar automaticamente novas aplicações
+    /// </summary>
+    public bool AprovarNovasAplicacoesAutomaticamente { get; set; } = false;
+    
+    /// <summary>
+    /// Justificativa para mudanças nas aplicações
+    /// </summary>
+    [MaxLength(500, ErrorMessage = "Justificativa deve ter no máximo 500 caracteres")]
+    public string? JustificativaMudancasAplicacoes { get; set; }
 }

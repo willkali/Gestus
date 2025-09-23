@@ -42,4 +42,25 @@ public class CriarUsuarioRequest
     /// Lista de papéis para atribuir ao usuário
     /// </summary>
     public List<string>? Papeis { get; set; }
+
+    /// <summary>
+    /// Lista de IDs das aplicações para conceder acesso
+    /// </summary>
+    public List<int>? AplicacoesIds { get; set; }
+    
+    /// <summary>
+    /// Se deve aprovar automaticamente o acesso às aplicações
+    /// </summary>
+    public bool AprovarAplicacoesAutomaticamente { get; set; } = false;
+    
+    /// <summary>
+    /// Justificativa para acesso às aplicações
+    /// </summary>
+    [MaxLength(500, ErrorMessage = "Justificativa deve ter no máximo 500 caracteres")]
+    public string? JustificativaAplicacoes { get; set; }
+    
+    /// <summary>
+    /// Data de expiração padrão para acessos às aplicações
+    /// </summary>
+    public DateTime? DataExpiracaoAplicacoes { get; set; }
 }

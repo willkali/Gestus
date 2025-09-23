@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Gestus.DTOs.Comuns; // ✅ Adicionado using
 
 namespace Gestus.DTOs.Usuario;
 
@@ -21,6 +22,7 @@ public class RespostaOperacaoLote
     public int TotalIgnorados { get; set; }
     
     public List<ItemProcessado> ItensProcessados { get; set; } = new();
+    
     public ArquivoExportacao? ArquivoExportacao { get; set; }
     
     public TimeSpan TempoExecucao => ConcluidoEm.HasValue ? ConcluidoEm.Value - IniciadoEm : TimeSpan.Zero;

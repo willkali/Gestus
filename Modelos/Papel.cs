@@ -21,4 +21,5 @@ public class Papel : IdentityRole<int>
     // Relacionamentos
     public virtual ICollection<UsuarioPapel> UsuarioPapeis { get; set; } = new List<UsuarioPapel>();
     public virtual ICollection<PapelPermissao> PapelPermissoes { get; set; } = new List<PapelPermissao>();
+    public virtual ICollection<PapelPermissaoAplicacao> PapelPermissoesAplicacao { get; set; } = new List<PapelPermissaoAplicacao>();
 }

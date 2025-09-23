@@ -26,6 +26,15 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
     public DbSet<ChaveEncriptacao> ChavesEncriptacao => Set<ChaveEncriptacao>();
     public DbSet<LogUsoChave> LogsUsoChave => Set<LogUsoChave>();
 
+    // ✅ ADICIONAR: DbSets para aplicações
+    public DbSet<TipoAplicacao> TiposAplicacao => Set<TipoAplicacao>();
+    public DbSet<StatusAplicacao> StatusAplicacao => Set<StatusAplicacao>();
+    public DbSet<Aplicacao> Aplicacoes => Set<Aplicacao>();
+    public DbSet<PermissaoAplicacao> PermissoesAplicacao => Set<PermissaoAplicacao>();
+    public DbSet<PapelPermissaoAplicacao> PapelPermissoesAplicacao => Set<PapelPermissaoAplicacao>();
+    public DbSet<UsuarioAplicacao> UsuariosAplicacao => Set<UsuarioAplicacao>();
+    public DbSet<HistoricoStatusAplicacao> HistoricoStatusAplicacao => Set<HistoricoStatusAplicacao>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -35,6 +44,9 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
 
         // Configurações das entidades personalizadas
         ConfigurarEntidadesPersonalizadas(builder);
+
+        // ✅ ADICIONAR: Configurações das entidades de aplicação
+        ConfigurarEntidadesAplicacao(builder);
 
         // Configurações de relacionamentos
         ConfigurarRelacionamentos(builder);
@@ -133,6 +145,245 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
             entity.Property(e => e.DadosDepois)
                   .HasColumnType("text")
                   .IsRequired(false);
+        });
+    }
+
+    // ✅ ADICIONAR: Configuração das entidades de aplicação
+    private void ConfigurarEntidadesAplicacao(ModelBuilder builder)
+    {
+        // TipoAplicacao
+        builder.Entity<TipoAplicacao>(entity =>
+        {
+            entity.ToTable("TiposAplicacao");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Codigo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Nome).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Descricao).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Icone).HasMaxLength(50);
+            entity.Property(e => e.Cor).HasMaxLength(7);
+            entity.Property(e => e.CamposPermissao).HasColumnType("text");
+            entity.Property(e => e.SchemaValidacao).HasColumnType("text");
+            entity.Property(e => e.TemplatePermissao).HasColumnType("text");
+            entity.Property(e => e.ConfiguracoesTipo).HasColumnType("text");
+            entity.Property(e => e.InstrucoesIntegracao).HasMaxLength(1000);
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.Codigo).IsUnique();
+            entity.HasIndex(e => e.Ordem);
+
+            entity.HasOne(ta => ta.CriadoPor)
+                  .WithMany()
+                  .HasForeignKey(ta => ta.CriadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(ta => ta.AtualizadoPor)
+                  .WithMany()
+                  .HasForeignKey(ta => ta.AtualizadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // StatusAplicacao
+        builder.Entity<StatusAplicacao>(entity =>
+        {
+            entity.ToTable("StatusAplicacao");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Codigo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Nome).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Descricao).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.CorFundo).HasMaxLength(7).IsRequired();
+            entity.Property(e => e.CorTexto).HasMaxLength(7).IsRequired();
+            entity.Property(e => e.Icone).HasMaxLength(50);
+            entity.Property(e => e.AcoesAutomaticas).HasColumnType("text");
+            entity.Property(e => e.MensagemUsuario).HasMaxLength(500);
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.Codigo).IsUnique();
+            entity.HasIndex(e => e.Ordem);
+
+            entity.HasOne(sa => sa.CriadoPor)
+                  .WithMany()
+                  .HasForeignKey(sa => sa.CriadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(sa => sa.AtualizadoPor)
+                  .WithMany()
+                  .HasForeignKey(sa => sa.AtualizadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Aplicacao
+        builder.Entity<Aplicacao>(entity =>
+        {
+            entity.ToTable("Aplicacoes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Nome).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Codigo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Descricao).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.UrlBase).HasMaxLength(500);
+            entity.Property(e => e.Versao).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ClientId).HasMaxLength(100);
+            entity.Property(e => e.ClientSecretEncriptado).HasMaxLength(500);
+            entity.Property(e => e.UrlsRedirecionamento).HasColumnType("text");
+            entity.Property(e => e.ScopesPermitidos).HasColumnType("text");
+            entity.Property(e => e.Configuracoes).HasColumnType("text");
+            entity.Property(e => e.MetadadosTipo).HasColumnType("text");
+            entity.Property(e => e.Observacoes).HasMaxLength(500);
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.Codigo).IsUnique();
+            entity.HasIndex(e => e.ClientId).IsUnique();
+            entity.HasIndex(e => new { e.TipoAplicacaoId, e.StatusAplicacaoId });
+
+            entity.HasOne(a => a.TipoAplicacao)
+                  .WithMany(ta => ta.Aplicacoes)
+                  .HasForeignKey(a => a.TipoAplicacaoId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(a => a.StatusAplicacao)
+                  .WithMany(sa => sa.Aplicacoes)
+                  .HasForeignKey(a => a.StatusAplicacaoId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(a => a.CriadoPor)
+                  .WithMany()
+                  .HasForeignKey(a => a.CriadoPorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(a => a.AtualizadoPor)
+                  .WithMany()
+                  .HasForeignKey(a => a.AtualizadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // PermissaoAplicacao
+        builder.Entity<PermissaoAplicacao>(entity =>
+        {
+            entity.ToTable("PermissoesAplicacao");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Nome).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Descricao).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Recurso).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Acao).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Endpoint).HasMaxLength(200);
+            entity.Property(e => e.MetodoHttp).HasMaxLength(20);
+            entity.Property(e => e.Modulo).HasMaxLength(100);
+            entity.Property(e => e.Tela).HasMaxLength(100);
+            entity.Property(e => e.Comando).HasMaxLength(100);
+            entity.Property(e => e.OperacaoSql).HasMaxLength(50);
+            entity.Property(e => e.Schema).HasMaxLength(100);
+            entity.Property(e => e.Tabela).HasMaxLength(100);
+            entity.Property(e => e.Categoria).HasMaxLength(100);
+            entity.Property(e => e.Condicoes).HasColumnType("text");
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => new { e.AplicacaoId, e.Recurso, e.Acao }).IsUnique();
+            entity.HasIndex(e => new { e.AplicacaoId, e.Categoria });
+            entity.HasIndex(e => e.Endpoint);
+
+            entity.HasOne(pa => pa.Aplicacao)
+                  .WithMany(a => a.Permissoes)
+                  .HasForeignKey(pa => pa.AplicacaoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(pa => pa.AtualizadoPor)
+                  .WithMany()
+                  .HasForeignKey(pa => pa.AtualizadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // PapelPermissaoAplicacao
+        builder.Entity<PapelPermissaoAplicacao>(entity =>
+        {
+            entity.ToTable("PapelPermissoesAplicacao");
+            entity.HasKey(e => new { e.PapelId, e.PermissaoAplicacaoId });
+            entity.Property(e => e.Observacoes).HasMaxLength(500);
+            entity.Property(e => e.DataAtribuicao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => new { e.AplicacaoId, e.PapelId });
+            entity.HasIndex(e => e.DataExpiracao);
+
+            entity.HasOne(ppa => ppa.Papel)
+                  .WithMany(p => p.PapelPermissoesAplicacao)
+                  .HasForeignKey(ppa => ppa.PapelId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ppa => ppa.PermissaoAplicacao)
+                  .WithMany(pa => pa.PapelPermissoes)
+                  .HasForeignKey(ppa => ppa.PermissaoAplicacaoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ppa => ppa.Aplicacao)
+                  .WithMany()
+                  .HasForeignKey(ppa => ppa.AplicacaoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ppa => ppa.AtribuidoPor)
+                  .WithMany()
+                  .HasForeignKey(ppa => ppa.AtribuidoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // UsuarioAplicacao
+        builder.Entity<UsuarioAplicacao>(entity =>
+        {
+            entity.ToTable("UsuariosAplicacao");
+            entity.HasKey(e => new { e.UsuarioId, e.AplicacaoId });
+            entity.Property(e => e.Justificativa).HasMaxLength(500);
+            entity.Property(e => e.ObservacoesAprovacao).HasMaxLength(500);
+            entity.Property(e => e.ConfiguracoesUsuario).HasColumnType("text");
+            entity.Property(e => e.DataSolicitacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.DataAprovacao);
+            entity.HasIndex(e => e.DataExpiracao);
+            entity.HasIndex(e => new { e.AplicacaoId, e.Aprovado });
+
+            entity.HasOne(ua => ua.Usuario)
+                  .WithMany(u => u.UsuariosAplicacao)
+                  .HasForeignKey(ua => ua.UsuarioId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ua => ua.Aplicacao)
+                  .WithMany(a => a.UsuariosAplicacao)
+                  .HasForeignKey(ua => ua.AplicacaoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ua => ua.AprovadoPor)
+                  .WithMany()
+                  .HasForeignKey(ua => ua.AprovadoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // HistoricoStatusAplicacao
+        builder.Entity<HistoricoStatusAplicacao>(entity =>
+        {
+            entity.ToTable("HistoricoStatusAplicacao");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Motivo).HasMaxLength(500);
+            entity.Property(e => e.Observacoes).HasMaxLength(1000);
+            entity.Property(e => e.DataMudanca).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => new { e.AplicacaoId, e.DataMudanca });
+            entity.HasIndex(e => e.StatusNovoId);
+
+            entity.HasOne(hsa => hsa.Aplicacao)
+                  .WithMany(a => a.HistoricoStatus)
+                  .HasForeignKey(hsa => hsa.AplicacaoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(hsa => hsa.StatusAnterior)
+                  .WithMany()
+                  .HasForeignKey(hsa => hsa.StatusAnteriorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(hsa => hsa.StatusNovo)
+                  .WithMany()
+                  .HasForeignKey(hsa => hsa.StatusNovoId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(hsa => hsa.AlteradoPor)
+                  .WithMany()
+                  .HasForeignKey(hsa => hsa.AlteradoPorId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 
@@ -240,6 +491,46 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
 
         builder.Entity<RegistroAuditoria>()
                .HasIndex(ra => ra.UsuarioId);
+
+        // ✅ ADICIONAR: Índices para entidades de aplicação
+        // TipoAplicacao
+        builder.Entity<TipoAplicacao>()
+               .HasIndex(ta => ta.Ativo);
+
+        builder.Entity<TipoAplicacao>()
+               .HasIndex(ta => ta.NivelComplexidade);
+
+        // StatusAplicacao
+        builder.Entity<StatusAplicacao>()
+               .HasIndex(sa => sa.PermiteAcesso);
+
+        builder.Entity<StatusAplicacao>()
+               .HasIndex(sa => sa.VisivelParaUsuarios);
+
+        // Aplicacao
+        builder.Entity<Aplicacao>()
+               .HasIndex(a => a.Ativa);
+
+        builder.Entity<Aplicacao>()
+               .HasIndex(a => a.NivelSeguranca);
+
+        // PermissaoAplicacao
+        builder.Entity<PermissaoAplicacao>()
+               .HasIndex(pa => pa.Ativa);
+
+        builder.Entity<PermissaoAplicacao>()
+               .HasIndex(pa => pa.Nivel);
+
+        // PapelPermissaoAplicacao
+        builder.Entity<PapelPermissaoAplicacao>()
+               .HasIndex(ppa => ppa.Ativa);
+
+        // UsuarioAplicacao
+        builder.Entity<UsuarioAplicacao>()
+               .HasIndex(ua => ua.Ativo);
+
+        builder.Entity<UsuarioAplicacao>()
+               .HasIndex(ua => ua.Aprovado);
     }
 
     private void ConfigurarEntidadesEmail(ModelBuilder builder)

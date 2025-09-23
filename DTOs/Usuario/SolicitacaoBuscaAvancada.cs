@@ -97,6 +97,26 @@ public class SolicitacaoBuscaAvancada
     public string OperadorPermissoes { get; set; } = "E";
 
     /// <summary>
+    /// Lista de aplicações para filtrar
+    /// </summary>
+    public List<string>? Aplicacoes { get; set; }
+    
+    /// <summary>
+    /// Operador para aplicações: "E" (todas) ou "OU" (qualquer)
+    /// </summary>
+    public string OperadorAplicacoes { get; set; } = "E";
+    
+    /// <summary>
+    /// Filtrar por status de acesso às aplicações
+    /// </summary>
+    public List<string>? StatusAcessoAplicacoes { get; set; } // "aprovado", "pendente", "expirado", "negado"
+    
+    /// <summary>
+    /// Filtrar por tipo de aplicação
+    /// </summary>
+    public List<string>? TiposAplicacao { get; set; } // "webapi", "spa", "desktop", "mobile"
+
+    /// <summary>
     /// Buscar apenas usuários sem papéis
     /// </summary>
     public bool? SemPapeis { get; set; }
@@ -107,9 +127,19 @@ public class SolicitacaoBuscaAvancada
     public bool? SemGrupos { get; set; }
 
     /// <summary>
+    /// Buscar apenas usuários sem aplicações
+    /// </summary>
+    public bool? SemAplicacoes { get; set; }
+
+    /// <summary>
     /// Buscar apenas usuários que nunca fizeram login
     /// </summary>
     public bool? SemUltimoLogin { get; set; }
+
+    /// <summary>
+    /// Buscar usuários com solicitações pendentes de aplicações
+    /// </summary>
+    public bool? ComSolicitacoesPendentes { get; set; }
 
     /// <summary>
     /// Critérios de ordenação

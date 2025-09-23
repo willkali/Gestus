@@ -30,6 +30,22 @@ public class ResultadoOperacao
     /// </summary>
     public DateTime DataOperacao { get; set; } = DateTime.UtcNow;
 
+    // ✅ ADICIONADAS: Propriedades que estavam faltando (linhas 2247-2249)
+    /// <summary>
+    /// Estatísticas da operação
+    /// </summary>
+    public EstatisticasOperacao? Estatisticas { get; set; }
+
+    /// <summary>
+    /// Lista de alertas gerados
+    /// </summary>
+    public List<string> Alertas { get; set; } = new();
+
+    /// <summary>
+    /// Lista de erros detalhados
+    /// </summary>
+    public List<string> Erros { get; set; } = new();
+
     /// <summary>
     /// Cria um resultado de sucesso
     /// </summary>

@@ -2,7 +2,7 @@ using Gestus.Dados;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
-using OpenIddict.Validation.AspNetCore; // ✅ ADICIONAR
+using OpenIddict.Validation.AspNetCore;
 
 namespace Gestus.Configuracoes;
 

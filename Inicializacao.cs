@@ -55,6 +55,11 @@ public static class Inicializacao
         // Autenticação e Autorização
         services.ConfigurarAutenticacao(configuration);
 
+        // Autorização baseada em permissões (bypass para SuperAdmin e curinga "*")
+        services.AddAuthorization();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Gestus.Autorizacao.PermissaoHandler>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, Gestus.Autorizacao.PermissaoPolicyProvider>();
+
         // Health Checks
         services.ConfigurarHealthChecks(configuration);
 
@@ -93,12 +98,10 @@ public static class Inicializacao
             c.EnableTryItOutByDefault();
         });
 
-        if (environment.IsDevelopment())
-        {
-            // ✅ SEEDER APENAS EM DESENVOLVIMENTO (restaurado)
-            await app.AplicarMigracoesESeederAsync();
-        }
-        else
+        // ✅ MUDANÇA: EXECUTAR SEEDER EM QUALQUER AMBIENTE
+        await app.AplicarMigracoesESeederAsync();
+
+        if (!environment.IsDevelopment())
         {
             app.UseExceptionHandler("/Error");
             app.UseHsts();

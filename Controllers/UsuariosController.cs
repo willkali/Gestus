@@ -30,6 +30,7 @@ public class UsuariosController : ControllerBase
     private readonly ILogger<UsuariosController> _logger;
     private readonly IArquivoService _arquivoService;
     private readonly IEmailService _emailService;
+    private int? papeisParaAdicionar;
 
     public UsuariosController(
         UserManager<Usuario> userManager,
@@ -1042,8 +1043,6 @@ public class UsuariosController : ControllerBase
                     {
                         TotalPapeisAntes = papeisAntes.Count,
                         TotalPapeisDepois = papeisDepois.Count,
-                        PapeisAdicionados = papeisDepois.Where(p => !papeisAntes.Any(pa => pa.Nome == p.Nome)).Select(p => p.Nome).ToList(),
-                        PapeisRemovidos = papeisAntes.Where(pa => !papeisDepois.Any(p => p.Nome == pa.Nome)).Select(pa => pa.Nome).Where(nome => nome != null).ToList()!,
                         TotalPermissoes = papeisDepois.SelectMany(p => p.Permissoes).DistinctBy(p => p.Nome).Count()
                     }
                 };
@@ -2091,6 +2090,575 @@ public class UsuariosController : ControllerBase
         {
             _logger.LogError(ex, "❌ Erro ao obter imagem de perfil: {Caminho}", caminhoArquivo);
             return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno" });
+        }
+    }
+
+    /// <summary>
+    /// Lista aplicações de um usuário específico com filtros
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="filtros">Filtros para aplicações</param>
+    /// <returns>Lista paginada de aplicações do usuário</returns>
+    [HttpGet("{id:int}/aplicacoes")]
+    [ProducesResponseType(typeof(RespostaPaginada<AplicacaoUsuario>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> ListarAplicacoesUsuario(int id, [FromQuery] FiltrosAplicacaoUsuario filtros)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.Visualizar") && !EhProprioUsuario(id))
+            {
+                return StatusCode(403, new RespostaErro 
+                { 
+                    Erro = "AcessoNegado", 
+                    Mensagem = "Usuário não tem permissão para visualizar aplicações deste usuário" 
+                });
+            }
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "UsuarioNaoEncontrado", 
+                    Mensagem = "Usuário não encontrado" 
+                });
+            }
+
+            var query = _context.UsuariosAplicacao
+                .Include(ua => ua.Aplicacao)
+                    .ThenInclude(a => a.TipoAplicacao)
+                .Include(ua => ua.Aplicacao)
+                    .ThenInclude(a => a.StatusAplicacao)
+                .Include(ua => ua.AprovadoPor)
+                .Where(ua => ua.UsuarioId == id)
+                .AsQueryable();
+
+            // Aplicar filtros
+            query = AplicarFiltrosAplicacaoUsuario(query, filtros);
+
+            // Aplicar ordenação
+            query = AplicarOrdenacaoAplicacaoUsuario(query, filtros.OrdenarPor, filtros.DirecaoOrdenacao);
+
+            // Paginação
+            var totalItens = await query.CountAsync();
+            var aplicacoesLista = await query
+                .AsNoTracking()
+                .Skip((filtros.Pagina - 1) * filtros.ItensPorPagina)
+                .Take(filtros.ItensPorPagina)
+                .ToListAsync();
+
+            var aplicacoes = aplicacoesLista
+                .Select(ua => ConstruirAplicacaoUsuario(ua))
+                .ToList();
+
+            var resposta = new RespostaPaginada<AplicacaoUsuario>
+            {
+                Dados = aplicacoes,
+                TotalItens = totalItens,
+                PaginaAtual = filtros.Pagina,
+                ItensPorPagina = filtros.ItensPorPagina,
+                TemPaginaAnterior = filtros.Pagina > 1
+            };
+
+            await RegistrarAuditoria("Visualizar", "UsuarioAplicacoes", id.ToString(), 
+                $"Listagem de aplicações do usuário '{usuario.Email}'");
+
+            return Ok(resposta);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao listar aplicações do usuário {Id}", id);
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "ErroInterno", 
+                Mensagem = "Erro interno do servidor" 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Gerencia aplicações de um usuário (adicionar, remover, aprovar, etc.)
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="request">Dados para gerenciamento</param>
+    /// <returns>Resultado da operação</returns>
+    [HttpPost("{id:int}/aplicacoes")]
+    [ProducesResponseType(typeof(RespostaGerenciamentoAplicacoes), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GerenciarAplicacoesUsuario(int id, [FromBody] GerenciarAplicacoesRequest request)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.GerenciarAplicacoes"))
+            {
+                return StatusCode(403, new RespostaErro 
+                { 
+                    Erro = "AcessoNegado", 
+                    Mensagem = "Usuário não tem permissão para gerenciar aplicações de usuários" 
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "UsuarioNaoEncontrado", 
+                    Mensagem = "Usuário não encontrado" 
+                });
+            }
+
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            var resultadoOperacao = await ExecutarOperacaoAplicacoes(usuario, request, usuarioLogadoId);
+
+            if (!resultadoOperacao.Sucesso)
+            {
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "ErroOperacao", 
+                    Mensagem = resultadoOperacao.Mensagem 
+                });
+            }
+
+            // Obter aplicações atuais do usuário
+            var aplicacoesAtuais = await ObterAplicacoesUsuarioAsync(id);
+
+            var resposta = new RespostaGerenciamentoAplicacoes
+            {
+                Sucesso = true,
+                Mensagem = resultadoOperacao.Mensagem,
+                TipoOperacao = request.Operacao,
+                Usuario = new UsuarioResumo
+                {
+                    Id = usuario.Id,
+                    Email = usuario.Email!,
+                    Nome = usuario.Nome,
+                    Sobrenome = usuario.Sobrenome,
+                    NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
+                    Ativo = usuario.Ativo
+                },
+                AplicacoesAtuais = aplicacoesAtuais,
+                Estatisticas = new EstatisticasOperacaoAplicacoes
+                {
+                    TotalAplicacoesAntes = aplicacoesAtuais?.Count ?? 0,
+                    TotalAplicacoesDepois = aplicacoesAtuais?.Count ?? 0, // cálculo simplificado
+                    AplicacoesAdicionadas = request.Operacao?.ToLower() == "adicionar" ? (request.AplicacoesIds?.Count ?? 0) : 0,
+                    AplicacoesRemovidas = request.Operacao?.ToLower() == "remover" ? (request.AplicacoesIds?.Count ?? 0) : 0,
+                    AplicacoesAprovadas = request.AprovarAutomaticamente ? (request.AplicacoesIds?.Count ?? 0) : 0,
+                    AplicacoesRejeitadas = 0,
+                    TotalPermissoes = 0,
+                    NomesAplicacoesAdicionadas = new(),
+                    NomesAplicacoesRemovidas = new()
+                },
+                Alertas = resultadoOperacao.Alertas,
+                Erros = resultadoOperacao.Erros
+            };
+
+            await RegistrarAuditoria("GerenciarAplicacoes", "Usuario", id.ToString(), 
+                $"Operação '{request.Operacao}' em aplicações do usuário '{usuario.Email}'", 
+                null, request);
+
+            // Enviar notificação se solicitado
+            if (request.NotificarUsuario && !string.IsNullOrEmpty(usuario.Email))
+            {
+                await EnviarNotificacaoAplicacoes(usuario, request.Operacao ?? string.Empty, resultadoOperacao);
+            }
+
+            _logger.LogInformation("✅ Aplicações gerenciadas - Usuário: {Id}, Operação: {Operacao}, Admin: {AdminId}", 
+                id, request.Operacao, usuarioLogadoId);
+
+            return Ok(resposta);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao gerenciar aplicações do usuário {Id}", id);
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "ErroInterno", 
+                Mensagem = "Erro interno do servidor" 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Aprova ou rejeita solicitação de acesso de usuário a uma aplicação
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="aplicacaoId">ID da aplicação</param>
+    /// <param name="request">Dados da aprovação</param>
+    /// <returns>Resultado da aprovação</returns>
+    [HttpPost("{id:int}/aplicacoes/{aplicacaoId:int}/aprovar")]
+    [ProducesResponseType(typeof(RespostaAprovacaoAcesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> AprovarAcessoAplicacao(int id, int aplicacaoId, [FromBody] AprovarAcessoAplicacaoRequest request)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.AprovarAplicacoes"))
+            {
+                return StatusCode(403, new RespostaErro 
+                { 
+                    Erro = "AcessoNegado", 
+                    Mensagem = "Usuário não tem permissão para aprovar acesso a aplicações" 
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "UsuarioNaoEncontrado", 
+                    Mensagem = "Usuário não encontrado" 
+                });
+            }
+
+            var usuarioAplicacao = await _context.UsuariosAplicacao
+                .Include(ua => ua.Aplicacao)
+                    .ThenInclude(a => a.TipoAplicacao)
+                .Include(ua => ua.Aplicacao)
+                    .ThenInclude(a => a.StatusAplicacao)
+                .FirstOrDefaultAsync(ua => ua.UsuarioId == id && ua.AplicacaoId == aplicacaoId);
+
+            if (usuarioAplicacao == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "SolicitacaoNaoEncontrada", 
+                    Mensagem = "Solicitação de acesso não encontrada" 
+                });
+            }
+
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            var resultadoAprovacao = await ProcessarAprovacaoAcesso(usuarioAplicacao, request, usuarioLogadoId);
+
+            if (!resultadoAprovacao.Sucesso)
+            {
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "ErroAprovacao", 
+                    Mensagem = resultadoAprovacao.Mensagem 
+                });
+            }
+
+            var aplicacaoUsuario = await ObterAplicacaoUsuarioAsync(id, aplicacaoId);
+
+            var resposta = new RespostaAprovacaoAcesso
+            {
+                Sucesso = true,
+                Mensagem = resultadoAprovacao.Mensagem,
+                DecisaoTomada = request.Decisao,
+                Usuario = new UsuarioResumo
+                {
+                    Id = usuario.Id,
+                    Email = usuario.Email!,
+                    Nome = usuario.Nome,
+                    Sobrenome = usuario.Sobrenome,
+                    NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
+                    Ativo = usuario.Ativo
+                },
+                AplicacaoAfetada = aplicacaoUsuario!,
+                DataExpiracao = usuarioAplicacao.DataExpiracao,
+                NotificacaoEnviada = request.NotificarUsuario,
+                ProximaAcaoNecessaria = ObterProximaAcao(request.Decisao, usuarioAplicacao)
+            };
+
+            await RegistrarAuditoria("AprovarAcesso", "UsuarioAplicacao", $"{id}-{aplicacaoId}", 
+                $"Decisão '{request.Decisao}' para acesso do usuário '{usuario.Email}' à aplicação '{usuarioAplicacao.Aplicacao.Nome}'", 
+                null, request);
+
+            // Enviar notificação se solicitado
+            if (request.NotificarUsuario && !string.IsNullOrEmpty(usuario.Email))
+            {
+                await EnviarNotificacaoAprovacao(usuario, usuarioAplicacao.Aplicacao, request);
+            }
+
+            _logger.LogInformation("✅ Acesso aprovado - Usuário: {UserId}, Aplicação: {AplicacaoId}, Decisão: {Decisao}, Aprovador: {AprovadorId}", 
+                id, aplicacaoId, request.Decisao, usuarioLogadoId);
+
+            return Ok(resposta);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao aprovar acesso do usuário {UserId} à aplicação {AplicacaoId}", id, aplicacaoId);
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "ErroInterno", 
+                Mensagem = "Erro interno do servidor" 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Remove acesso de usuário a uma aplicação
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="aplicacaoId">ID da aplicação</param>
+    /// <param name="motivo">Motivo da remoção</param>
+    /// <returns>Confirmação da remoção</returns>
+    [HttpDelete("{id:int}/aplicacoes/{aplicacaoId:int}")]
+    [ProducesResponseType(typeof(RespostaSucesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> RemoverAcessoAplicacao(int id, int aplicacaoId, [FromQuery] string? motivo)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.GerenciarAplicacoes"))
+            {
+                return StatusCode(403, new RespostaErro 
+                { 
+                    Erro = "AcessoNegado", 
+                    Mensagem = "Usuário não tem permissão para remover acesso a aplicações" 
+                });
+            }
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "UsuarioNaoEncontrado", 
+                    Mensagem = "Usuário não encontrado" 
+                });
+            }
+
+            var usuarioAplicacao = await _context.UsuariosAplicacao
+                .Include(ua => ua.Aplicacao)
+                .FirstOrDefaultAsync(ua => ua.UsuarioId == id && ua.AplicacaoId == aplicacaoId);
+
+            if (usuarioAplicacao == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "AcessoNaoEncontrado", 
+                    Mensagem = "Usuário não possui acesso a esta aplicação" 
+                });
+            }
+
+            var nomeAplicacao = usuarioAplicacao.Aplicacao.Nome;
+
+            // Remover acesso
+            _context.UsuariosAplicacao.Remove(usuarioAplicacao);
+            await _context.SaveChangesAsync();
+
+            await RegistrarAuditoria("RemoverAcesso", "UsuarioAplicacao", $"{id}-{aplicacaoId}", 
+                $"Acesso removido do usuário '{usuario.Email}' à aplicação '{nomeAplicacao}'. Motivo: {motivo ?? "Não informado"}", 
+                usuarioAplicacao, null);
+
+            _logger.LogInformation("✅ Acesso removido - Usuário: {UserId}, Aplicação: {AplicacaoId}, Admin: {AdminId}", 
+                id, aplicacaoId, ObterUsuarioLogadoId());
+
+            return Ok(new RespostaSucesso 
+            { 
+                Mensagem = $"Acesso à aplicação '{nomeAplicacao}' removido com sucesso" 
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao remover acesso do usuário {UserId} à aplicação {AplicacaoId}", id, aplicacaoId);
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "ErroInterno", 
+                Mensagem = "Erro interno do servidor" 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Lista aplicações disponíveis para um usuário solicitar acesso
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="filtros">Filtros para aplicações</param>
+    /// <returns>Lista de aplicações disponíveis</returns>
+    [HttpGet("{id:int}/aplicacoes/disponiveis")]
+    [ProducesResponseType(typeof(RespostaPaginada<AplicacaoDisponivelUsuario>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> ListarAplicacoesDisponiveis(int id, [FromQuery] FiltrosAplicacaoUsuario filtros)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.Visualizar") && !EhProprioUsuario(id))
+            {
+                return StatusCode(403, new RespostaErro 
+                { 
+                    Erro = "AcessoNegado", 
+                    Mensagem = "Usuário não tem permissão para visualizar aplicações disponíveis" 
+                });
+            }
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "UsuarioNaoEncontrado", 
+                    Mensagem = "Usuário não encontrado" 
+                });
+            }
+
+            // Obter aplicações que o usuário NÃO tem acesso
+            var aplicacoesComAcesso = await _context.UsuariosAplicacao
+                .Where(ua => ua.UsuarioId == id)
+                .Select(ua => ua.AplicacaoId)
+                .ToListAsync();
+
+            var query = _context.Aplicacoes
+                .Include(a => a.TipoAplicacao)
+                .Include(a => a.StatusAplicacao)
+                .Where(a => a.Ativa && 
+                           a.StatusAplicacao.VisivelParaUsuarios &&
+                           !aplicacoesComAcesso.Contains(a.Id))
+                .AsQueryable();
+
+            // Aplicar filtros básicos
+            if (!string.IsNullOrEmpty(filtros.Nome))
+            {
+                query = query.Where(a => a.Nome.ToLower().Contains(filtros.Nome.ToLower()));
+            }
+
+            if (!string.IsNullOrEmpty(filtros.TipoAplicacao))
+            {
+                query = query.Where(a => a.TipoAplicacao.Codigo == filtros.TipoAplicacao);
+            }
+
+            // Paginação
+            var totalItens = await query.CountAsync();
+            var aplicacoesLista = await query
+                .AsNoTracking()
+                .Skip((filtros.Pagina - 1) * filtros.ItensPorPagina)
+                .Take(filtros.ItensPorPagina)
+                .ToListAsync();
+
+            var aplicacoes = aplicacoesLista
+                .Select(a => ConstruirAplicacaoDisponivel(a, usuario))
+                .ToList();
+
+            var resposta = new RespostaPaginada<AplicacaoDisponivelUsuario>
+            {
+                Dados = aplicacoes,
+                TotalItens = totalItens,
+                PaginaAtual = filtros.Pagina,
+                ItensPorPagina = filtros.ItensPorPagina,
+                TotalPaginas = (int)Math.Ceiling((double)totalItens / filtros.ItensPorPagina)
+            };
+
+            return Ok(resposta);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao listar aplicações disponíveis para usuário {Id}", id);
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "ErroInterno", 
+                Mensagem = "Erro interno do servidor" 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Usuário solicita acesso a uma aplicação
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="request">Dados da solicitação</param>
+    /// <returns>Resultado da solicitação</returns>
+    [HttpPost("{id:int}/aplicacoes/solicitar")]
+    [ProducesResponseType(typeof(RespostaSolicitacaoAcesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> SolicitarAcessoAplicacao(int id, [FromBody] SolicitarAcessoAplicacaoRequest request)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.SolicitarAplicacoes") && !EhProprioUsuario(id))
+            {
+                return StatusCode(403, new RespostaErro 
+                { 
+                    Erro = "AcessoNegado", 
+                    Mensagem = "Usuário não tem permissão para solicitar acesso a aplicações" 
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "UsuarioNaoEncontrado", 
+                    Mensagem = "Usuário não encontrado" 
+                });
+            }
+
+            var aplicacao = await _context.Aplicacoes
+                .Include(a => a.TipoAplicacao)
+                .Include(a => a.StatusAplicacao)
+                .FirstOrDefaultAsync(a => a.Id == request.AplicacaoId);
+
+            if (aplicacao == null)
+            {
+                return NotFound(new RespostaErro 
+                { 
+                    Erro = "AplicacaoNaoEncontrada", 
+                    Mensagem = "Aplicação não encontrada" 
+                });
+            }
+
+            // Verificar se já tem acesso
+            var jaTemAcesso = await _context.UsuariosAplicacao
+                .AnyAsync(ua => ua.UsuarioId == id && ua.AplicacaoId == request.AplicacaoId);
+
+            if (jaTemAcesso)
+            {
+                return BadRequest(new RespostaErro 
+                { 
+                    Erro = "AcessoJaExiste", 
+                    Mensagem = "Usuário já possui acesso a esta aplicação" 
+                });
+            }
+
+            var resultadoSolicitacao = await ProcessarSolicitacaoAcesso(usuario, aplicacao, request);
+
+            await RegistrarAuditoria("SolicitarAcesso", "UsuarioAplicacao", $"{id}-{request.AplicacaoId}", 
+                $"Usuário '{usuario.Email}' solicitou acesso à aplicação '{aplicacao.Nome}'", 
+                null, request);
+
+            _logger.LogInformation("✅ Solicitação de acesso criada - Usuário: {UserId}, Aplicação: {AplicacaoId}", 
+                id, request.AplicacaoId);
+
+            return Ok(resultadoSolicitacao);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao processar solicitação de acesso do usuário {UserId} à aplicação {AplicacaoId}", 
+                id, request.AplicacaoId);
+            return StatusCode(500, new RespostaErro 
+            { 
+                Erro = "ErroInterno", 
+                Mensagem = "Erro interno do servidor" 
+            });
         }
     }
 
@@ -3665,8 +4233,8 @@ public class UsuariosController : ControllerBase
             resposta.ArquivoExportacao = new ArquivoExportacao
             {
                 NomeArquivo = $"usuarios_export_{DateTime.UtcNow:yyyyMMdd_HHmmss}.{formato}",
-                ContentType = ObterContentType(formato),
-                Conteudo = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(conteudo)),
+                TipoConteudo = ObterContentType(formato),
+                ConteudoBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(conteudo)),
                 Tamanho = conteudo.Length
             };
 
@@ -4417,8 +4985,8 @@ public class UsuariosController : ControllerBase
             resultado.ArquivoExportacao = new ArquivoExportacao
             {
                 NomeArquivo = nomeArquivo,
-                ContentType = contentType,
-                Conteudo = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(conteudoExportacao)),
+                TipoConteudo = contentType,
+                ConteudoBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(conteudoExportacao)),
                 Tamanho = System.Text.Encoding.UTF8.GetBytes(conteudoExportacao).Length
             };
 
@@ -5480,6 +6048,799 @@ public class UsuariosController : ControllerBase
         }
         
         return new string(senha);
+    }
+
+    #endregion
+
+    #region Métodos Auxiliares de Aplicações
+
+    private bool EhProprioUsuario(int usuarioId)
+    {
+        var usuarioLogadoId = ObterUsuarioLogadoId();
+        return usuarioLogadoId == usuarioId;
+    }
+
+    private IQueryable<UsuarioAplicacao> AplicarFiltrosAplicacaoUsuario(IQueryable<UsuarioAplicacao> query, FiltrosAplicacaoUsuario filtros)
+    {
+        if (!string.IsNullOrEmpty(filtros.Nome))
+        {
+            query = query.Where(ua => ua.Aplicacao.Nome.ToLower().Contains(filtros.Nome.ToLower()));
+        }
+
+        if (!string.IsNullOrEmpty(filtros.TipoAplicacao))
+        {
+            query = query.Where(ua => ua.Aplicacao.TipoAplicacao.Codigo == filtros.TipoAplicacao);
+        }
+
+        if (!string.IsNullOrEmpty(filtros.StatusAplicacao))
+        {
+            query = query.Where(ua => ua.Aplicacao.StatusAplicacao.Codigo == filtros.StatusAplicacao);
+        }
+
+        if (filtros.ApenasAtivas.HasValue && filtros.ApenasAtivas.Value)
+        {
+            query = query.Where(ua => ua.Ativo);
+        }
+
+        if (filtros.ApenasAprovados.HasValue && filtros.ApenasAprovados.Value)
+        {
+            query = query.Where(ua => ua.Aprovado);
+        }
+
+        if (filtros.NivelSegurancaMinimo.HasValue)
+        {
+            query = query.Where(ua => ua.Aplicacao.NivelSeguranca >= filtros.NivelSegurancaMinimo.Value);
+        }
+
+        if (filtros.NivelSegurancaMaximo.HasValue)
+        {
+            query = query.Where(ua => ua.Aplicacao.NivelSeguranca <= filtros.NivelSegurancaMaximo.Value);
+        }
+
+        if (filtros.DataSolicitacaoInicio.HasValue)
+        {
+            query = query.Where(ua => ua.DataSolicitacao >= filtros.DataSolicitacaoInicio.Value);
+        }
+
+        if (filtros.DataSolicitacaoFim.HasValue)
+        {
+            query = query.Where(ua => ua.DataSolicitacao <= filtros.DataSolicitacaoFim.Value);
+        }
+
+        if (!filtros.IncluirExpiradas)
+        {
+            query = query.Where(ua => !ua.DataExpiracao.HasValue || ua.DataExpiracao > DateTime.UtcNow);
+        }
+
+        return query;
+    }
+
+    private IQueryable<UsuarioAplicacao> AplicarOrdenacaoAplicacaoUsuario(IQueryable<UsuarioAplicacao> query, string? ordenarPor, string? direcao)
+    {
+        var desc = direcao?.ToLower() == "desc";
+
+        return ordenarPor?.ToLower() switch
+        {
+            "nome" => desc ? query.OrderByDescending(ua => ua.Aplicacao.Nome) : query.OrderBy(ua => ua.Aplicacao.Nome),
+            "datasolicitacao" => desc ? query.OrderByDescending(ua => ua.DataSolicitacao) : query.OrderBy(ua => ua.DataSolicitacao),
+            "dataaprovacao" => desc ? query.OrderByDescending(ua => ua.DataAprovacao) : query.OrderBy(ua => ua.DataAprovacao),
+            "nivelseguranca" => desc ? query.OrderByDescending(ua => ua.Aplicacao.NivelSeguranca) : query.OrderBy(ua => ua.Aplicacao.NivelSeguranca),
+            _ => query.OrderBy(ua => ua.Aplicacao.Nome)
+        };
+    }
+
+    private AplicacaoUsuario ConstruirAplicacaoUsuario(UsuarioAplicacao usuarioAplicacao)
+    {
+        return new AplicacaoUsuario
+        {
+            Id = usuarioAplicacao.Aplicacao.Id,
+            Nome = usuarioAplicacao.Aplicacao.Nome,
+            Codigo = usuarioAplicacao.Aplicacao.Codigo,
+            Descricao = usuarioAplicacao.Aplicacao.Descricao,
+            UrlBase = usuarioAplicacao.Aplicacao.UrlBase,
+            TipoAplicacao = new TipoAplicacaoUsuario
+            {
+                Codigo = usuarioAplicacao.Aplicacao.TipoAplicacao.Codigo,
+                Nome = usuarioAplicacao.Aplicacao.TipoAplicacao.Nome,
+                Icone = usuarioAplicacao.Aplicacao.TipoAplicacao.Icone,
+                Cor = usuarioAplicacao.Aplicacao.TipoAplicacao.Cor
+            },
+            StatusAplicacao = new StatusAplicacaoUsuario
+            {
+                Codigo = usuarioAplicacao.Aplicacao.StatusAplicacao.Codigo,
+                Nome = usuarioAplicacao.Aplicacao.StatusAplicacao.Nome,
+                CorFundo = usuarioAplicacao.Aplicacao.StatusAplicacao.CorFundo,
+                CorTexto = usuarioAplicacao.Aplicacao.StatusAplicacao.CorTexto,
+                Icone = usuarioAplicacao.Aplicacao.StatusAplicacao.Icone,
+                PermiteAcesso = usuarioAplicacao.Aplicacao.StatusAplicacao.PermiteAcesso,
+                MensagemUsuario = usuarioAplicacao.Aplicacao.StatusAplicacao.MensagemUsuario
+            },
+            Versao = usuarioAplicacao.Aplicacao.Versao,
+            NivelSeguranca = usuarioAplicacao.Aplicacao.NivelSeguranca,
+            StatusAcesso = ObterStatusAcessoUsuario(usuarioAplicacao),
+            DataSolicitacao = usuarioAplicacao.DataSolicitacao,
+            DataAprovacao = usuarioAplicacao.DataAprovacao,
+            DataExpiracao = usuarioAplicacao.DataExpiracao,
+            Justificativa = usuarioAplicacao.Justificativa,
+            ObservacoesAprovacao = usuarioAplicacao.ObservacoesAprovacao,
+            AprovadoPor = usuarioAplicacao.AprovadoPor?.Nome + " " + usuarioAplicacao.AprovadoPor?.Sobrenome,
+            Ativo = usuarioAplicacao.Ativo,
+            Aprovado = usuarioAplicacao.Aprovado,
+            ConfiguracoesUsuario = usuarioAplicacao.ConfiguracoesUsuario,
+            TotalPermissoes = ObterTotalPermissoesUsuarioAplicacao(usuarioAplicacao.UsuarioId, usuarioAplicacao.AplicacaoId)
+        };
+    }
+
+    private StatusAcessoUsuario ObterStatusAcessoUsuario(UsuarioAplicacao usuarioAplicacao)
+    {
+        if (!usuarioAplicacao.Ativo)
+        {
+            return new StatusAcessoUsuario
+            {
+                Codigo = "suspenso",
+                Nome = "Suspenso",
+                CorFundo = "#6c757d",
+                CorTexto = "#ffffff",
+                Icone = "⏸️"
+            };
+        }
+
+        if (!usuarioAplicacao.Aprovado)
+        {
+            return new StatusAcessoUsuario
+            {
+                Codigo = "pendente",
+                Nome = "Pendente",
+                CorFundo = "#ffc107",
+                CorTexto = "#000000",
+                Icone = "⏳"
+            };
+        }
+
+        if (usuarioAplicacao.DataExpiracao.HasValue && usuarioAplicacao.DataExpiracao <= DateTime.UtcNow)
+        {
+            return new StatusAcessoUsuario
+            {
+                Codigo = "expirado",
+                Nome = "Expirado",
+                CorFundo = "#dc3545",
+                CorTexto = "#ffffff",
+                Icone = "⏰"
+            };
+        }
+
+        return new StatusAcessoUsuario
+        {
+            Codigo = "aprovado",
+            Nome = "Aprovado",
+            CorFundo = "#28a745",
+            CorTexto = "#ffffff",
+            Icone = "✅"
+        };
+    }
+
+    private int ObterTotalPermissoesUsuarioAplicacao(int usuarioId, int aplicacaoId)
+    {
+        // Implementar lógica para contar permissões específicas do usuário na aplicação
+        // baseado nos papéis que ele possui
+        return 0; // Placeholder
+    }
+
+    private AplicacaoDisponivelUsuario ConstruirAplicacaoDisponivel(Aplicacao aplicacao, Usuario usuario)
+    {
+        return new AplicacaoDisponivelUsuario
+        {
+            Id = aplicacao.Id,
+            Nome = aplicacao.Nome,
+            Codigo = aplicacao.Codigo,
+            Descricao = aplicacao.Descricao,
+            UrlBase = aplicacao.UrlBase,
+            TipoAplicacao = new TipoAplicacaoUsuario
+            {
+                Codigo = aplicacao.TipoAplicacao.Codigo,
+                Nome = aplicacao.TipoAplicacao.Nome,
+                Icone = aplicacao.TipoAplicacao.Icone,
+                Cor = aplicacao.TipoAplicacao.Cor
+            },
+            StatusAplicacao = new StatusAplicacaoUsuario
+            {
+                Codigo = aplicacao.StatusAplicacao.Codigo,
+                Nome = aplicacao.StatusAplicacao.Nome,
+                CorFundo = aplicacao.StatusAplicacao.CorFundo,
+                CorTexto = aplicacao.StatusAplicacao.CorTexto,
+                Icone = aplicacao.StatusAplicacao.Icone,
+                PermiteAcesso = aplicacao.StatusAplicacao.PermiteAcesso,
+                MensagemUsuario = aplicacao.StatusAplicacao.MensagemUsuario
+            },
+            NivelSeguranca = aplicacao.NivelSeguranca,
+            RequerAprovacao = aplicacao.RequerAprovacao,
+            PermiteAutoRegistro = aplicacao.PermiteAutoRegistro,
+            StatusUsuario = new StatusUsuarioAplicacao
+            {
+                Codigo = "sem_acesso",
+                Nome = "Sem Acesso",
+                CorFundo = "#f8f9fa",
+                CorTexto = "#6c757d",
+                Icone = "❌",
+                PodeSolicitar = aplicacao.StatusAplicacao.PermiteNovoUsuario,
+                PodeAcessar = false,
+                Motivo = aplicacao.StatusAplicacao.PermiteNovoUsuario ? null : "Aplicação não aceita novos usuários"
+            },
+            TempoAprovacaoEstimado = aplicacao.RequerAprovacao ? "2-5 dias úteis" : "Imediato",
+            ResponsaveisAprovacao = ObterResponsaveisAprovacao(aplicacao.Id)
+        };
+    }
+
+    private List<string> ObterResponsaveisAprovacao(int aplicacaoId)
+    {
+        // Implementar lógica para obter lista de responsáveis pela aprovação
+        // baseado em papéis ou configurações específicas
+        return new List<string> { "Administradores do Sistema" }; // Placeholder
+    }
+
+    private async Task<List<AplicacaoUsuario>> ObterAplicacoesUsuarioAsync(int usuarioId)
+    {
+        var usuariosAplicacao = await _context.UsuariosAplicacao
+            .Include(ua => ua.Aplicacao)
+                .ThenInclude(a => a.TipoAplicacao)
+            .Include(ua => ua.Aplicacao)
+                .ThenInclude(a => a.StatusAplicacao)
+            .Include(ua => ua.AprovadoPor)
+            .Where(ua => ua.UsuarioId == usuarioId)
+            .ToListAsync();
+
+        return usuariosAplicacao.Select(ua => ConstruirAplicacaoUsuario(ua)).ToList();
+    }
+
+    private async Task<AplicacaoUsuario?> ObterAplicacaoUsuarioAsync(int usuarioId, int aplicacaoId)
+    {
+        var usuarioAplicacao = await _context.UsuariosAplicacao
+            .Include(ua => ua.Aplicacao)
+                .ThenInclude(a => a.TipoAplicacao)
+            .Include(ua => ua.Aplicacao)
+                .ThenInclude(a => a.StatusAplicacao)
+            .Include(ua => ua.AprovadoPor)
+            .FirstOrDefaultAsync(ua => ua.UsuarioId == usuarioId && ua.AplicacaoId == aplicacaoId);
+
+        return usuarioAplicacao != null ? ConstruirAplicacaoUsuario(usuarioAplicacao) : null;
+    }
+
+    // Métodos auxiliares para operações complexas que serão implementados...
+    private async Task<ResultadoOperacao> ExecutarOperacaoAplicacoes(Usuario usuario, GerenciarAplicacoesRequest request, int usuarioLogadoId)
+    {
+        var inicio = DateTime.UtcNow;
+        var alertas = new List<string>();
+        var erros = new List<string>();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.Operacao))
+            {
+                return new ResultadoOperacao { Sucesso = false, Mensagem = "Operação não informada" };
+            }
+
+            // Estrategia de execução resiliente + transação (padrão do projeto)
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                using var tx = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var op = request.Operacao.Trim().ToLower();
+
+                    // Estado atual das aplicações do usuário
+                    var atuais = await _context.UsuariosAplicacao
+                        .Include(ua => ua.Aplicacao)
+                            .ThenInclude(a => a.StatusAplicacao)
+                        .Where(ua => ua.UsuarioId == usuario.Id)
+                        .ToListAsync();
+
+                    // Pré-carregar aplicações solicitadas quando fizer sentido
+                    List<Aplicacao> appsSelecionadas = new();
+                    if (request.AplicacoesIds?.Any() == true)
+                    {
+                        appsSelecionadas = await _context.Aplicacoes
+                            .Include(a => a.StatusAplicacao)
+                            .Where(a => request.AplicacoesIds.Contains(a.Id))
+                            .ToListAsync();
+
+                        // Validar IDs inexistentes
+                        var idsEncontrados = appsSelecionadas.Select(a => a.Id).ToHashSet();
+                        var idsInvalidos = request.AplicacoesIds.Where(id => !idsEncontrados.Contains(id)).ToList();
+                        if (idsInvalidos.Any())
+                            alertas.Add($"Aplicações não encontradas: {string.Join(", ", idsInvalidos)}");
+                    }
+
+                    int adicionadas = 0, removidas = 0, aprovadas = 0, rejeitadas = 0;
+
+                    switch (op)
+                    {
+                        case "adicionar":
+                        {
+                            if (!appsSelecionadas.Any())
+                            {
+                                erros.Add("Nenhuma aplicação informada para adicionar");
+                                break;
+                            }
+
+                            foreach (var app in appsSelecionadas)
+                            {
+                                var existente = atuais.FirstOrDefault(x => x.AplicacaoId == app.Id);
+                                if (existente != null)
+                                {
+                                    alertas.Add($"Usuário já possui vínculo com a aplicação '{app.Nome}'");
+                                    continue;
+                                }
+
+                                var aprovarAgora = request.AprovarAutomaticamente || (!app.RequerAprovacao && app.StatusAplicacao.PermiteAcesso);
+                                var novo = new UsuarioAplicacao
+                                {
+                                    UsuarioId = usuario.Id,
+                                    AplicacaoId = app.Id,
+                                    Justificativa = request.Justificativa,
+                                    ConfiguracoesUsuario = request.ConfiguracoesUsuario,
+                                    Aprovado = aprovarAgora,
+                                    DataAprovacao = aprovarAgora ? DateTime.UtcNow : null,
+                                    AprovadoPorId = aprovarAgora ? usuarioLogadoId : null,
+                                    DataExpiracao = request.DataExpiracao,
+                                    Ativo = true
+                                };
+
+                                _context.UsuariosAplicacao.Add(novo);
+                                adicionadas++;
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        case "remover":
+                        {
+                            if (!appsSelecionadas.Any())
+                            {
+                                erros.Add("Nenhuma aplicação informada para remover");
+                                break;
+                            }
+
+                            foreach (var app in appsSelecionadas)
+                            {
+                                var existente = await _context.UsuariosAplicacao
+                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
+                                if (existente == null)
+                                {
+                                    alertas.Add($"Usuário não possui a aplicação '{app.Nome}'");
+                                    continue;
+                                }
+
+                                _context.UsuariosAplicacao.Remove(existente);
+                                removidas++;
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        case "substituir":
+                        {
+                            // Remove tudo que não está na lista e adiciona os que faltam
+                            var idsAlvo = request.AplicacoesIds?.ToHashSet() ?? new HashSet<int>();
+
+                            // Remover vínculos que não estão na nova lista
+                            var paraRemover = atuais.Where(ua => !idsAlvo.Contains(ua.AplicacaoId)).ToList();
+                            if (paraRemover.Any())
+                            {
+                                _context.UsuariosAplicacao.RemoveRange(paraRemover);
+                                removidas += paraRemover.Count;
+                            }
+
+                            // Adicionar vínculos que faltam
+                            var idsAtuais = atuais.Select(a => a.AplicacaoId).ToHashSet();
+                            var idsParaAdicionar = idsAlvo.Except(idsAtuais).ToList();
+                            if (idsParaAdicionar.Any())
+                            {
+                                var appsParaAdicionar = await _context.Aplicacoes
+                                    .Include(a => a.StatusAplicacao)
+                                    .Where(a => idsParaAdicionar.Contains(a.Id))
+                                    .ToListAsync();
+
+                                foreach (var app in appsParaAdicionar)
+                                {
+                                    var aprovarAgora = request.AprovarAutomaticamente || (!app.RequerAprovacao && app.StatusAplicacao.PermiteAcesso);
+                                    _context.UsuariosAplicacao.Add(new UsuarioAplicacao
+                                    {
+                                        UsuarioId = usuario.Id,
+                                        AplicacaoId = app.Id,
+                                        Justificativa = request.Justificativa,
+                                        ConfiguracoesUsuario = request.ConfiguracoesUsuario,
+                                        Aprovado = aprovarAgora,
+                                        DataAprovacao = aprovarAgora ? DateTime.UtcNow : null,
+                                        AprovadoPorId = aprovarAgora ? usuarioLogadoId : null,
+                                        DataExpiracao = request.DataExpiracao,
+                                        Ativo = true
+                                    });
+                                    adicionadas++;
+                                }
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        case "aprovar":
+                        {
+                            if (!appsSelecionadas.Any())
+                            {
+                                erros.Add("Nenhuma aplicação informada para aprovar");
+                                break;
+                            }
+
+                            foreach (var app in appsSelecionadas)
+                            {
+                                var vinculo = await _context.UsuariosAplicacao
+                                    .Include(ua => ua.Aplicacao)
+                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
+
+                                if (vinculo == null)
+                                {
+                                    alertas.Add($"Solicitação inexistente para a aplicação '{app.Nome}'");
+                                    continue;
+                                }
+
+                                vinculo.Aprovado = true;
+                                vinculo.Ativo = true;
+                                vinculo.DataAprovacao = DateTime.UtcNow;
+                                vinculo.AprovadoPorId = usuarioLogadoId;
+                                if (!string.IsNullOrWhiteSpace(request.Observacoes))
+                                    vinculo.ObservacoesAprovacao = request.Observacoes;
+                                if (request.DataExpiracao.HasValue)
+                                    vinculo.DataExpiracao = request.DataExpiracao;
+                                if (!string.IsNullOrWhiteSpace(request.ConfiguracoesUsuario))
+                                    vinculo.ConfiguracoesUsuario = request.ConfiguracoesUsuario;
+
+                                aprovadas++;
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        case "rejeitar":
+                        {
+                            if (!appsSelecionadas.Any())
+                            {
+                                erros.Add("Nenhuma aplicação informada para rejeitar");
+                                break;
+                            }
+
+                            foreach (var app in appsSelecionadas)
+                            {
+                                var vinculo = await _context.UsuariosAplicacao
+                                    .Include(ua => ua.Aplicacao)
+                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
+
+                                if (vinculo == null)
+                                {
+                                    alertas.Add($"Solicitação inexistente para a aplicação '{app.Nome}'");
+                                    continue;
+                                }
+
+                                vinculo.Aprovado = false;
+                                vinculo.Ativo = false;
+                                vinculo.DataAprovacao = DateTime.UtcNow;
+                                vinculo.AprovadoPorId = usuarioLogadoId;
+                                vinculo.ObservacoesAprovacao = !string.IsNullOrWhiteSpace(request.Observacoes)
+                                    ? request.Observacoes
+                                    : "Acesso rejeitado";
+                                vinculo.DataExpiracao = null;
+
+                                rejeitadas++;
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        case "suspender":
+                        {
+                            if (!appsSelecionadas.Any())
+                            {
+                                erros.Add("Nenhuma aplicação informada para suspender");
+                                break;
+                            }
+
+                            foreach (var app in appsSelecionadas)
+                            {
+                                var vinculo = await _context.UsuariosAplicacao
+                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
+
+                                if (vinculo == null)
+                                {
+                                    alertas.Add($"Vínculo inexistente para a aplicação '{app.Nome}'");
+                                    continue;
+                                }
+
+                                vinculo.Ativo = false;
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        case "reativar":
+                        {
+                            if (!appsSelecionadas.Any())
+                            {
+                                erros.Add("Nenhuma aplicação informada para reativar");
+                                break;
+                            }
+
+                            foreach (var app in appsSelecionadas)
+                            {
+                                var vinculo = await _context.UsuariosAplicacao
+                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
+
+                                if (vinculo == null)
+                                {
+                                    alertas.Add($"Vínculo inexistente para a aplicação '{app.Nome}'");
+                                    continue;
+                                }
+
+                                vinculo.Ativo = true;
+                            }
+
+                            await _context.SaveChangesAsync();
+                            break;
+                        }
+
+                        default:
+                            throw new NotSupportedException($"Operação não suportada: {request.Operacao}");
+                    }
+
+                    await tx.CommitAsync();
+                }
+                catch
+                {
+                    await tx.RollbackAsync();
+                    throw;
+                }
+            });
+
+            var duracao = DateTime.UtcNow - inicio;
+            var mensagem = request.Operacao.Trim().ToLower() switch
+            {
+                "adicionar" => "Aplicações adicionadas com sucesso",
+                "remover" => "Aplicações removidas com sucesso",
+                "substituir" => "Aplicações substituídas com sucesso",
+                "aprovar" => "Solicitações aprovadas com sucesso",
+                "rejeitar" => "Solicitações rejeitadas com sucesso",
+                "suspender" => "Acessos suspensos com sucesso",
+                "reativar" => "Acessos reativados com sucesso",
+                _ => "Operação executada com sucesso"
+            };
+
+            return new ResultadoOperacao
+            {
+                Sucesso = erros.Count == 0,
+                Mensagem = mensagem,
+                Alertas = alertas,
+                Erros = erros
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro em ExecutarOperacaoAplicacoes para usuário {UsuarioId}", usuario.Id);
+            return new ResultadoOperacao { Sucesso = false, Mensagem = "Erro interno ao executar operação de aplicações" };
+        }
+    }
+
+    private async Task<ResultadoOperacao> ProcessarAprovacaoAcesso(UsuarioAplicacao usuarioAplicacao, AprovarAcessoAplicacaoRequest request, int usuarioLogadoId)
+    {
+        try
+        {
+            var decisao = (request.Decisao ?? string.Empty).Trim().ToLower();
+
+            switch (decisao)
+            {
+                case "aprovar":
+                case "aprovar_temporario":
+                {
+                    usuarioAplicacao.Aprovado = true;
+                    usuarioAplicacao.Ativo = true;
+                    usuarioAplicacao.DataAprovacao = DateTime.UtcNow;
+                    usuarioAplicacao.AprovadoPorId = usuarioLogadoId;
+                    usuarioAplicacao.ObservacoesAprovacao = request.Observacoes;
+                    if (decisao == "aprovar_temporario")
+                    {
+                        if (request.DuracaoTemporariaDias.HasValue)
+                            usuarioAplicacao.DataExpiracao = DateTime.UtcNow.AddDays(request.DuracaoTemporariaDias.Value);
+                        else if (request.DataExpiracao.HasValue)
+                            usuarioAplicacao.DataExpiracao = request.DataExpiracao;
+                    }
+                    else if (request.DataExpiracao.HasValue)
+                    {
+                        usuarioAplicacao.DataExpiracao = request.DataExpiracao;
+                    }
+                    if (!string.IsNullOrWhiteSpace(request.ConfiguracoesUsuario))
+                        usuarioAplicacao.ConfiguracoesUsuario = request.ConfiguracoesUsuario;
+
+                    await _context.SaveChangesAsync();
+                    return new ResultadoOperacao { Sucesso = true, Mensagem = "Acesso aprovado com sucesso" };
+                }
+
+                case "rejeitar":
+                {
+                    usuarioAplicacao.Aprovado = false;
+                    usuarioAplicacao.Ativo = false;
+                    usuarioAplicacao.DataAprovacao = DateTime.UtcNow;
+                    usuarioAplicacao.AprovadoPorId = usuarioLogadoId;
+                    usuarioAplicacao.ObservacoesAprovacao = string.IsNullOrWhiteSpace(request.Observacoes) ?
+                        "Solicitação rejeitada" : request.Observacoes;
+                    usuarioAplicacao.DataExpiracao = null;
+
+                    await _context.SaveChangesAsync();
+                    return new ResultadoOperacao { Sucesso = true, Mensagem = "Acesso rejeitado com sucesso" };
+                }
+
+                default:
+                    return new ResultadoOperacao { Sucesso = false, Mensagem = $"Decisão inválida: {request.Decisao}" };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao processar aprovação de acesso (UsuarioId={UsuarioId}, AplicacaoId={AplicacaoId})", 
+                usuarioAplicacao.UsuarioId, usuarioAplicacao.AplicacaoId);
+            return new ResultadoOperacao { Sucesso = false, Mensagem = "Erro interno ao processar aprovação" };
+        }
+    }
+
+    private async Task<RespostaSolicitacaoAcesso> ProcessarSolicitacaoAcesso(Usuario usuario, Aplicacao aplicacao, SolicitarAcessoAplicacaoRequest request)
+    {
+        try
+        {
+            // Verificar se já existe vínculo
+            var existente = await _context.UsuariosAplicacao
+                .FirstOrDefaultAsync(ua => ua.UsuarioId == usuario.Id && ua.AplicacaoId == aplicacao.Id);
+
+            if (existente != null)
+            {
+                return new RespostaSolicitacaoAcesso
+                {
+                    Sucesso = false,
+                    Mensagem = "Usuário já possui vínculo com esta aplicação",
+                    SolicitacaoId = aplicacao.Id,
+                    StatusSolicitacao = existente.Aprovado ? "aprovada" : "pendente",
+                    RequerAprovacao = aplicacao.RequerAprovacao,
+                    ProximosPassos = existente.Aprovado ? new List<string>() : new List<string> { "Aguardar análise do responsável" },
+                    PrevisaoResposta = aplicacao.RequerAprovacao ? DateTime.UtcNow.AddDays(3) : DateTime.UtcNow,
+                    Responsaveis = ObterResponsaveisAprovacao(aplicacao.Id)
+                };
+            }
+
+            var precisaAprovacao = aplicacao.RequerAprovacao;
+            var aprovadoImediato = !precisaAprovacao && aplicacao.StatusAplicacao.PermiteAcesso;
+
+            var vinculo = new UsuarioAplicacao
+            {
+                UsuarioId = usuario.Id,
+                AplicacaoId = aplicacao.Id,
+                Justificativa = request.Justificativa,
+                ConfiguracoesUsuario = request.ConfiguracoesDesejadas,
+                DataSolicitacao = DateTime.UtcNow,
+                Aprovado = aprovadoImediato,
+                DataAprovacao = aprovadoImediato ? DateTime.UtcNow : null,
+                DataExpiracao = request.DataExpiracaoDesejada,
+                Ativo = true
+            };
+
+            _context.UsuariosAplicacao.Add(vinculo);
+            await _context.SaveChangesAsync();
+
+            return new RespostaSolicitacaoAcesso
+            {
+                Sucesso = true,
+                Mensagem = aprovadoImediato ? "Acesso concedido imediatamente" : "Solicitação registrada com sucesso",
+                SolicitacaoId = aplicacao.Id, // Não há ID próprio; usamos o da aplicação como referência
+                StatusSolicitacao = aprovadoImediato ? "aprovada" : "pendente",
+                AplicacaoSolicitada = aprovadoImediato ? await ObterAplicacaoUsuarioAsync(usuario.Id, aplicacao.Id) : null,
+                RequerAprovacao = precisaAprovacao,
+                ProximosPassos = aprovadoImediato ? new List<string>() : new List<string> { "Aguardar aprovação do responsável" },
+                PrevisaoResposta = precisaAprovacao ? DateTime.UtcNow.AddDays(3) : DateTime.UtcNow,
+                Responsaveis = ObterResponsaveisAprovacao(aplicacao.Id)
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao processar solicitação de acesso (UsuarioId={UsuarioId}, AplicacaoId={AplicacaoId})", 
+                usuario.Id, aplicacao.Id);
+            return new RespostaSolicitacaoAcesso
+            {
+                Sucesso = false,
+                Mensagem = "Erro interno ao criar solicitação",
+                SolicitacaoId = aplicacao.Id,
+                StatusSolicitacao = "erro",
+                RequerAprovacao = aplicacao.RequerAprovacao,
+                ProximosPassos = new List<string>(),
+                Responsaveis = ObterResponsaveisAprovacao(aplicacao.Id)
+            };
+        }
+    }
+
+    private async Task EnviarNotificacaoAplicacoes(Usuario usuario, string operacao, ResultadoOperacao resultado)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(usuario.Email) || !usuario.NotificacaoEmail)
+            {
+                _logger.LogInformation("📧 Notificação não enviada (preferências ou email ausente) - Usuário: {Id}", usuario.Id);
+                return;
+            }
+
+            var assunto = $"[Gestus] Alteração de acesso às suas aplicações ({operacao})";
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("<h2>Atualização de Acesso</h2>");
+            sb.AppendLine($"<p>Operação: <strong>{operacao}</strong></p>");
+            sb.AppendLine($"<p>Status: <strong>{(resultado.Sucesso ? "Sucesso" : "Com avisos/erros")}</strong></p>");
+            if (resultado.Alertas?.Any() == true)
+            {
+                sb.AppendLine("<h3>Avisos</h3><ul>");
+                foreach (var a in resultado.Alertas) sb.AppendLine($"<li>{System.Net.WebUtility.HtmlEncode(a)}</li>");
+                sb.AppendLine("</ul>");
+            }
+            if (resultado.Erros?.Any() == true)
+            {
+                sb.AppendLine("<h3>Erros</h3><ul>");
+                foreach (var e in resultado.Erros) sb.AppendLine($"<li>{System.Net.WebUtility.HtmlEncode(e)}</li>");
+                sb.AppendLine("</ul>");
+            }
+
+            await _emailService.EnviarEmailAsync(usuario.Email, assunto, sb.ToString(), isHtml: true);
+            _logger.LogInformation("📧 Notificação enviada para {Email} sobre operação {Operacao}", usuario.Email, operacao);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao enviar notificação para {Email}", usuario.Email);
+        }
+    }
+
+    private async Task EnviarNotificacaoAprovacao(Usuario usuario, Aplicacao aplicacao, AprovarAcessoAplicacaoRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(usuario.Email) || !usuario.NotificacaoEmail)
+            {
+                _logger.LogInformation("📧 Notificação não enviada (preferências ou email ausente) - Usuário: {Id}", usuario.Id);
+                return;
+            }
+
+            var assunto = $"[Gestus] {aplicacao.Nome}: decisão da solicitação de acesso ({request.Decisao})";
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"<h2>Aplicação: {System.Net.WebUtility.HtmlEncode(aplicacao.Nome)}</h2>");
+            sb.AppendLine($"<p>Decisão: <strong>{System.Net.WebUtility.HtmlEncode(request.Decisao)}</strong></p>");
+            if (request.DataExpiracao.HasValue)
+                sb.AppendLine($"<p>Data de expiração: {request.DataExpiracao:dd/MM/yyyy}</p>");
+            if (!string.IsNullOrWhiteSpace(request.Observacoes))
+                sb.AppendLine($"<p>Observações: {System.Net.WebUtility.HtmlEncode(request.Observacoes!)}</p>");
+
+            await _emailService.EnviarEmailAsync(usuario.Email, assunto, sb.ToString(), isHtml: true);
+            _logger.LogInformation("📧 Notificação de aprovação enviada para {Email} sobre aplicação {Aplicacao}", usuario.Email, aplicacao.Nome);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao enviar notificação de aprovação para {Email}", usuario.Email);
+        }
+    }
+
+    private string? ObterProximaAcao(string decisao, UsuarioAplicacao usuarioAplicacao)
+    {
+        return (decisao ?? string.Empty).Trim().ToLower() switch
+        {
+            "aprovar" => "Usuário pode acessar a aplicação",
+            "rejeitar" => "Usuário pode solicitar novamente após revisar justificativa",
+            "aprovar_temporario" => usuarioAplicacao.DataExpiracao.HasValue 
+                ? $"Acesso válido até {usuarioAplicacao.DataExpiracao:dd/MM/yyyy}" 
+                : "Acesso temporário concedido",
+            _ => null
+        };
     }
 
     #endregion

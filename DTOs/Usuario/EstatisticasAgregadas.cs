@@ -15,4 +15,9 @@ public class EstatisticasAgregadas
     public int UsuariosSemUltimoLogin { get; set; }
     public List<EstatisticaCategoria> DistribuicaoPorPapel { get; set; } = new();
     public List<EstatisticaCategoria> DistribuicaoPorGrupo { get; set; } = new();
+    public List<EstatisticaCategoria> DistribuicaoPorAplicacao { get; set; } = new();
+    public List<EstatisticaCategoria> DistribuicaoPorStatusAcesso { get; set; } = new();
+    public int UsuariosComAplicacoes { get; set; }
+    public int UsuariosSemAplicacoes { get; set; }
+    public int TotalSolicitacoesPendentes { get; set; }
 }

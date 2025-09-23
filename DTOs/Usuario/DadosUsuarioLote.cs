@@ -43,4 +43,25 @@ public class DadosUsuarioLote
     /// Lista de papéis para atribuir
     /// </summary>
     public List<string>? Papeis { get; set; }
+
+    /// <summary>
+    /// Lista de códigos/IDs das aplicações para atribuir
+    /// </summary>
+    public List<string>? Aplicacoes { get; set; }
+    
+    /// <summary>
+    /// Se deve aprovar automaticamente as aplicações
+    /// </summary>
+    public bool AprovarAplicacoesAutomaticamente { get; set; } = false;
+    
+    /// <summary>
+    /// Justificativa padrão para acesso às aplicações
+    /// </summary>
+    [MaxLength(500, ErrorMessage = "Justificativa deve ter no máximo 500 caracteres")]
+    public string? JustificativaAplicacoes { get; set; }
+    
+    /// <summary>
+    /// Data de expiração padrão para acessos
+    /// </summary>
+    public DateTime? DataExpiracaoAplicacoes { get; set; }
 }

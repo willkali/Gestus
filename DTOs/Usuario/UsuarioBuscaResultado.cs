@@ -21,5 +21,19 @@ public class UsuarioBuscaResultado
     public DateTime? UltimoLogin { get; set; }
     public List<PapelBusca> Papeis { get; set; } = new();
     public List<GrupoBusca> Grupos { get; set; } = new();
+    public List<AplicacaoBusca> Aplicacoes { get; set; } = new();
     public EstatisticasBusca Estatisticas { get; set; } = new();
+}
+
+/// <summary>
+/// Aplicação na busca
+/// </summary>
+public class AplicacaoBusca
+{
+    public string Nome { get; set; } = string.Empty;
+    public string Codigo { get; set; } = string.Empty;
+    public string TipoAplicacao { get; set; } = string.Empty;
+    public string StatusAcesso { get; set; } = string.Empty; // "aprovado", "pendente", "expirado"
+    public DateTime DataSolicitacao { get; set; }
+    public DateTime? DataAprovacao { get; set; }
 }

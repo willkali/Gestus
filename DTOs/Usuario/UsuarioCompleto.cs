@@ -22,6 +22,7 @@ public class UsuarioCompleto
     public List<PapelUsuario> Papeis { get; set; } = new();
     public List<PermissaoUsuario> Permissoes { get; set; } = new();
     public List<GrupoUsuario> Grupos { get; set; } = new();
+    public List<AplicacaoUsuario> Aplicacoes { get; set; } = new();
     public EstatisticasUsuario Estatisticas { get; set; } = new();
 }
 
@@ -60,6 +61,11 @@ public class EstatisticasUsuario
     public int TotalPapeis { get; set; }
     public int TotalPermissoes { get; set; }
     public int TotalGrupos { get; set; }
+    public int TotalAplicacoes { get; set; }
+    public int AplicacoesAprovadas { get; set; }
+    public int AplicacoesPendentes { get; set; }
+    public int AplicacoesExpiradas { get; set; }
     public int ContadorLogins { get; set; }
     public DateTime? UltimoPapelAtribuido { get; set; }
+    public DateTime? UltimaAplicacaoSolicitada { get; set; }
 }

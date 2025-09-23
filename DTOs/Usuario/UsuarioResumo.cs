@@ -15,4 +15,7 @@ public class UsuarioResumo
     public DateTime? UltimoLogin { get; set; }
     public List<string> Papeis { get; set; } = new();
     public int TotalPermissoes { get; set; }
+    public int TotalAplicacoes { get; set; }
+    public int AplicacoesAtivas { get; set; }
+    public List<string> AplicacoesPrincipais { get; set; } = new(); // Top 3 aplicações mais usadas
 }

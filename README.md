@@ -1,143 +1,125 @@
-# Gestus - Backend Identity & Access Management (IAM)
+# Gestus IAM
 
-## Visão Geral
+API em ASP.NET Core 8 para autenticação/autorização (OpenIddict + ASP.NET Identity), controle granular de permissões, auditoria e integrações de email. Banco de dados PostgreSQL via Entity Framework Core. Observabilidade com Serilog, HealthChecks e Prometheus.
 
-Gestus é um backend corporativo para **Identity & Access Management (IAM)**, projetado para centralizar e orquestrar autenticação, autorização, permissões granularizadas, auditoria e monitoramento em múltiplas aplicações. O foco é fornecer uma base robusta, segura e escalável, facilitando a governança de identidade e acesso para ambientes críticos.
 
----
+## Requisitos
 
-## Arquitetura e Camadas
+- .NET 8 SDK
+- PostgreSQL (local ou remoto)
+- Ferramenta de migrations do EF Core
+  - Instalação/atualização (PowerShell):
+    - `dotnet tool update -g dotnet-ef`
 
-O projeto segue o padrão **MVC**, com separação rigorosa entre domínio, infraestrutura e apresentação:
 
-- **Controllers:** Exposição de endpoints RESTful, segregados por responsabilidade (usuários, papéis, permissões, autenticação, auditoria, etc).
-- **Models:** Entidades de domínio fortemente tipadas, representando usuários, papéis, permissões, grupos e logs de auditoria. Utilizam anotações para validação e integração com o ORM.
-- **DTOs/ViewModels:** Objetos de transferência para entrada/saída nas APIs, desacoplando os modelos internos das estruturas expostas.
-- **Repositories:** Interfaces e implementações para abstração do acesso aos dados, facilitando testes, manutenção e evolução.
-- **Services:** Camada de lógica de negócio, responsável por processar regras, validações e integrações entre componentes.
-- **Middlewares:** Pipeline para logging, tratamento global de exceções, autenticação/autorização customizada, CORS, etc.
-- **Configurations:** Centralização de parâmetros de configuração (Swagger, Identity, Serilog, SpiceDB, JWT, Prometheus, etc).
-- **HealthChecks:** Implementações para verificação de saúde de banco de dados, SpiceDB, endpoints externos, entre outros.
-- **Mappings:** Perfis do AutoMapper para conversão automática entre Models, DTOs e ViewModels.
-- **Extensions:** Métodos utilitários para funcionalidades transversais.
+## Configuração
 
----
+1) Variáveis de ambiente (opcional, recomendado)
+- Ambiente de desenvolvimento:
+  - PowerShell: `$env:ASPNETCORE_ENVIRONMENT = "Development"`
+- URLs do Kestrel (produção, exemplo):
+  - PowerShell: `$env:ASPNETCORE_URLS = "http://0.0.0.0:5000;https://0.0.0.0:7001"`
 
-## Tecnologias, Bibliotecas e Integrações
+2) appsettings (ajuste conforme seu ambiente)
+- `appsettings.json`
+  - ConnectionStrings.DefaultConnection (PostgreSQL)
+  - App.BaseUrl (URL pública da API; usada em emails/templates)
+  - Cors.AllowedOrigins (origens permitidas)
+- `appsettings.Development.json`
+  - Já configurado para escutar em `http://0.0.0.0:5000`
+- OpenIddict (clients, URIs e segredos) — parametrizável por appsettings/variáveis de ambiente:
+  - `OpenIddict:Api:ClientId` (default: gestus_api)
+  - `OpenIddict:Api:ClientSecret` (defina no ambiente)
+  - `OpenIddict:Spa:ClientId` (default: gestus_spa)
+  - `OpenIddict:Spa:RedirectUris` (lista, ex.: `"http://SEU_IP:3000/callback"`)
+  - `OpenIddict:Spa:PostLogoutRedirectUris` (lista)
 
-- **ASP.NET Core 8:** Web API, DI, Middlewares, DataProtection, CORS.
-- **Entity Framework Core + PostgreSQL:** ORM, migrations, seeding automatizado, conexões resilientes.
-- **OpenIddict + ASP.NET Core Identity:** Implementação de OpenID Connect/OAuth2, autenticação via JWT, gestão de papéis, claims, login social, PKCE, etc.
-- **SpiceDB/Authzed:** Permissões granularizadas via gRPC, suporte a RBAC/ABAC, controle dinâmico, relações complexas.
-- **Serilog:** Logging estruturado, sinks para console, arquivos, enriquecimento de contexto, rastreabilidade.
-- **Prometheus-net.AspNetCore:** Exposição de métricas HTTP, monitoração customizada, counters, histograms.
-- **HealthChecks (UI/Npgsql/Uris):** Monitoramento de banco, endpoints, serviços externos, UI integrada.
-- **Swagger/Swashbuckle:** Documentação automática dos endpoints, autenticação via JWT, exemplos interativos.
-- **AutoMapper:** Mapeamento inteligente entre camadas de dados.
-- **FluentValidation:** Validação robusta de entrada e saída, regras customizadas, mensagens amigáveis.
-- **Polly:** Resiliência em chamadas externas, políticas de retry, circuit breaker e timeout.
+Exemplos (PowerShell, dev):
+- `$env:OpenIddict__Api__ClientId = "gestus_api"`
+- `$env:OpenIddict__Api__ClientSecret = "{{CLIENT_SECRET}}"`
+- `$env:OpenIddict__Spa__ClientId = "gestus_spa"`
+- `$env:OpenIddict__Spa__RedirectUris = "[\"http://192.168.0.10:3000/callback\"]"`
+- `$env:OpenIddict__Spa__PostLogoutRedirectUris = "[\"http://192.168.0.10:3000/\"]"`
 
----
 
-## Fluxos e Funcionalidades
+## Banco de dados (criação e atualização)
 
-### Autenticação
+Use o contexto `GestusDbContexto`.
 
-- Emissão de tokens JWT via OpenIddict, com suporte a diversos fluxos OAuth2 (Authorization Code, Client Credentials, Password, Refresh Token).
-- Gestão de usuários, papéis, claims e permissões via ASP.NET Core Identity.
-- Integração com login social e PKCE para aplicações SPA.
+1) Build do projeto
+- `dotnet build`
 
-### Autorização Granularizada
+2) Gerar migrations (se necessário)
+- `dotnet ef migrations add InitFullSchema -c GestusDbContexto`
 
-- Controle de acesso baseado em relações, usando SpiceDB/Authzed.
-- Permissões dinâmicas (RBAC, ABAC), hierarquia de papéis, grupos e permissões customizadas.
-- Auditoria de acessos e modificações em tempo real.
+3) Aplicar migrations no banco
+- `dotnet ef database update --context GestusDbContexto`
 
-### Auditoria e Logging
+4) (Opcional, DEV) Recriar banco do zero
+- `dotnet ef database drop -f --context GestusDbContexto`
+- `dotnet ef database update --context GestusDbContexto`
 
-- Registro detalhado de todas operações críticas e eventos sensíveis.
-- Logs enriquecidos com contexto de usuário, requestId, IP, device, etc.
-- Persistência de logs para análise posterior e conformidade.
 
-### Monitoramento
+## Executar a API
 
-- Exposição de métricas detalhadas via Prometheus.
-- HealthChecks periódicos em bancos, serviços de permissões, endpoints externos.
-- UI integrada para acompanhamento visual do status dos serviços.
+- `dotnet run`
+- Swagger/UI: `/` (raiz)
+- Healthcheck JSON: `/saude`
+- HealthChecks UI: `/saude-ui`
+- Métricas Prometheus: `/metrics` (conforme pipeline)
 
-### Provisionamento Inicial
 
-- Seeder automatizado para criação de usuários, papéis, permissões padrão, grupos e templates de e-mail (onboarding, recuperação de senha, confirmação de e-mail).
-- Configuração automática de clientes OAuth2 (API e SPA), scopes customizados, redirect URIs, requisitos de segurança (PKCE).
-  
----
+## Seeder (dados iniciais)
 
-## Requisitos de Ambiente
+Executado no startup e idempotente. Cria/garante:
+- Scopes e aplicações OpenIddict (conforme configuração)
+- Papéis: SuperAdmin, Admin, Usuario, GestorUsuarios, GestorPermissoes, Auditor
+- Permissões por recurso/ação
+- Associação de permissões:
+  - SuperAdmin: bypass total (não recebe permissões explícitas)
+  - Admin: todas, exceto gestão de papéis (criar/editar/remover/gerenciar) e exclusão permanente de usuários
+- Aplicação “Gestus” (webapp/ativa) e acesso aprovado para SuperAdmin/Admin
+- Templates de email padrão (configuração de email só é criada automaticamente se não existir nenhuma — ativa ou inativa)
 
-1. **.NET 8 SDK**
-2. **PostgreSQL** (configuração em `appsettings.json`)
-3. **SpiceDB** (endpoint e token configurados)
-4. **Prometheus** para coleta de métricas (opcional)
-5. **Docker** (opcional, para facilitar setup dos serviços)
+Contas padrão:
+- Super Admin
+  - Email: `willian.cavalcante@skymsen.com`
+  - Senha: `Reboot3!`
+- Administrador
+  - Email: `super@gestus.local`
+  - Senha: `Reboot3!`
 
----
 
-## Instalação e Execução
+## Autenticação
 
-1. Clone o repositório.
-2. Configure os arquivos `appsettings.json` e `appsettings.Development.json` conforme ambiente.
-3. Execute as migrations do banco:
-   ```
-   dotnet ef database update
-   ```
-4. Inicie a aplicação:
-   ```
-   dotnet run
-   ```
-5. Acesse a documentação interativa dos endpoints via Swagger em `/swagger`.
+- Token endpoint OpenIddict: `POST /connect/token`
+  - Grant types: password, authorization_code (SPA), refresh_token, client_credentials
+- Exemplo (password grant) — dev (PowerShell):
+```
+$CLIENT_ID = "gestus_api"
+$CLIENT_SECRET = "{{CLIENT_SECRET}}"   # defina no ambiente
+$BODY = @{
+  grant_type = "password"
+  client_id = $CLIENT_ID
+  client_secret = $CLIENT_SECRET
+  username = "willian.cavalcante@skymsen.com"
+  password = "Reboot3!"
+  scope = "openid profile email roles"
+}
+Invoke-RestMethod -Method Post -Uri "http://localhost:5000/connect/token" -Body $BODY
+```
+- Login “amigável”: `POST /api/autenticacao/login` (encapsula `/connect/token`)
+- Bypass SuperAdmin:
+  - Tokens do SuperAdmin incluem `permissao="*"`
+  - AuthorizationHandler central concede acesso se `SuperAdmin` ou `*`
 
----
 
-## Boas Práticas
+## Configuração de Email
 
-- Siga rigorosamente o padrão arquitetural MVC e a organização proposta.
-- Utilize DI para todos os componentes e prefira interfaces para facilitar testes e manutenção.
-- Centralize regras de validação em DTOs e ViewModels.
-- Amplie HealthChecks e monitoramento conforme novas dependências externas.
-- Expanda integrações usando Polly para garantir resiliência.
-- Nunca exponha dados sensíveis em logs (senhas, tokens, etc).
-- Implemente testes unitários e de integração para lógica de negócio.
+- Endpoint: `api/email-config`
+- Inicialização cria templates padrão; a configuração SMTP só é criada automaticamente se não existir nenhuma (ativa ou inativa). Configure via API em produção.
 
----
 
-## Segurança
+## Desenvolvimento em rede
 
-- Todas rotas sensíveis exigem autenticação via JWT.
-- Permissões são validadas de forma granular por SpiceDB/Authzed.
-- DataProtection, CORS e políticas restritivas estão habilitadas por padrão.
-- Auditoria completa de todas operações críticas para conformidade.
-
----
-
-## Referências
-
-- [ASP.NET Core Identity](https://learn.microsoft.com/aspnet/core/security/authentication/identity)
-- [OpenIddict](https://documentation.openiddict.com/)
-- [SpiceDB/Authzed](https://authzed.com/docs/spicedb/)
-- [Serilog](https://serilog.net/)
-- [Prometheus-net](https://github.com/prometheus-net/prometheus-net)
-- [Swagger/Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore)
-- [AutoMapper](https://automapper.org/)
-- [FluentValidation](https://fluentvalidation.net/)
-
----
-
-## Licença
-
-MIT
-
----
-
-## Autor
-
-Desenvolvido por [willkali](https://github.com/willkali)
+- Em dev, API escuta em `0.0.0.0:5000`. Ajuste CORS (`Cors:AllowedOrigins`) e OpenIddict:Spa:* para refletir o host/IP do seu frontend.

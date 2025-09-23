@@ -13,6 +13,7 @@ public static class SeederInicial
         var userManager = serviceProvider.GetRequiredService<UserManager<Usuario>>();
         var roleManager = serviceProvider.GetRequiredService<RoleManager<Papel>>();
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
         // ✅ ADICIONAR: Gerenciador de aplicações e scopes OpenIddict
         var applicationManager = serviceProvider.GetRequiredService<IOpenIddictApplicationManager>();
@@ -34,13 +35,25 @@ public static class SeederInicial
 
             // ✅ ORDEM CORRETA DE EXECUÇÃO
             await CriarScopesOpenIddict(scopeManager, logger);
-            await CriarAplicacoesOpenIddict(applicationManager, logger);
+            await CriarAplicacoesOpenIddict(applicationManager, configuration, logger);
             await CriarPapeisBase(roleManager, logger);
             await CriarPermissoesBase(context, logger);
             await AssociarPermissoesAosPapeis(context, roleManager, logger);
             await CriarSuperAdmin(userManager, logger);
             await CriarGruposBase(context, logger);
             await CriarTemplatesEmail(context, logger);
+
+            // ✅ TIPOS/STATUS DE APLICAÇÃO E APLICAÇÃO GESTUS
+            await CriarTiposStatusAplicacaoBase(context, logger);
+            await CriarAplicacaoGestus(context, configuration, logger);
+
+            // ✅ CRIAR USUÁRIOS PADRÃO
+            var superAdmin = await CriarSuperAdmin(userManager, logger);
+            var adminUsuario = await CriarAdministrador(userManager, logger);
+
+            // ✅ CONCEDER ACESSO À APLICAÇÃO GESTUS PARA SUPERADMIN E ADMIN
+            await ConcederAcessoAplicacaoGestus(context, logger, superAdmin?.Id);
+            await ConcederAcessoAplicacaoGestus(context, logger, adminUsuario?.Id);
 
             // Salvar mudanças finais
             logger.LogInformation("💾 Salvando mudanças no banco...");
@@ -302,17 +315,26 @@ public static class SeederInicial
         };
     }
 
-    private static async Task CriarAplicacoesOpenIddict(IOpenIddictApplicationManager applicationManager, ILogger logger)
+    private static async Task CriarAplicacoesOpenIddict(IOpenIddictApplicationManager applicationManager, IConfiguration configuration, ILogger logger)
     {
         logger.LogInformation("🔧 Criando aplicações OpenIddict...");
 
+        // Carregar configurações de clients do OpenIddict
+        var oidcSection = configuration.GetSection("OpenIddict");
+        var apiClientId = oidcSection.GetValue<string>("Api:ClientId") ?? "gestus_api";
+        var apiClientSecret = oidcSection.GetValue<string>("Api:ClientSecret") ?? "gestus_api_secret_2024";
+
+        var spaClientId = oidcSection.GetValue<string>("Spa:ClientId") ?? "gestus_spa";
+        var spaRedirectUris = oidcSection.GetSection("Spa:RedirectUris").Get<string[]>() ?? Array.Empty<string>();
+        var spaPostLogoutUris = oidcSection.GetSection("Spa:PostLogoutRedirectUris").Get<string[]>() ?? Array.Empty<string>();
+
         // Aplicação para API (Resource Server)
-        if (await applicationManager.FindByClientIdAsync("gestus_api") == null)
+        if (await applicationManager.FindByClientIdAsync(apiClientId) == null)
         {
             await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
             {
-                ClientId = "gestus_api",
-                ClientSecret = "gestus_api_secret_2024",
+                ClientId = apiClientId,
+                ClientSecret = apiClientSecret,
                 ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
                 DisplayName = "Gestus API",
                 ClientType = OpenIddictConstants.ClientTypes.Confidential,
@@ -330,32 +352,22 @@ public static class SeederInicial
                 }
             });
 
-            logger.LogInformation("✅ Aplicação 'gestus_api' criada no OpenIddict");
+            logger.LogInformation("✅ Aplicação '{ClientId}' criada no OpenIddict", apiClientId);
         }
         else
         {
-            logger.LogInformation("⚠️ Aplicação 'gestus_api' já existe no OpenIddict");
+            logger.LogInformation("⚠️ Aplicação '{ClientId}' já existe no OpenIddict", apiClientId);
         }
 
         // Aplicação para Frontend (SPA)
-        if (await applicationManager.FindByClientIdAsync("gestus_spa") == null)
+        if (await applicationManager.FindByClientIdAsync(spaClientId) == null)
         {
-            await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
+            var descriptor = new OpenIddictApplicationDescriptor
             {
-                ClientId = "gestus_spa",
+                ClientId = spaClientId,
                 ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
                 DisplayName = "Gestus SPA",
                 ClientType = OpenIddictConstants.ClientTypes.Public,
-                PostLogoutRedirectUris =
-                {
-                    new Uri("https://localhost:3000/"),
-                    new Uri("http://localhost:3000/")
-                },
-                RedirectUris =
-                {
-                    new Uri("https://localhost:3000/callback"),
-                    new Uri("http://localhost:3000/callback")
-                },
                 Permissions =
                 {
                     OpenIddictConstants.Permissions.Endpoints.Authorization,
@@ -372,13 +384,29 @@ public static class SeederInicial
                 {
                     OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange
                 }
-            });
+            };
 
-            logger.LogInformation("✅ Aplicação 'gestus_spa' criada no OpenIddict");
+            // Adicionar URIs de configuração se houver
+            if (spaRedirectUris.Length == 0 || spaPostLogoutUris.Length == 0)
+            {
+                logger.LogWarning("⚠️ URIs do SPA não configuradas (OpenIddict:Spa:RedirectUris / PostLogoutRedirectUris). Usando padrão http(s)://localhost:3000");
+                descriptor.RedirectUris.Add(new Uri("http://localhost:3000/callback"));
+                descriptor.PostLogoutRedirectUris.Add(new Uri("http://localhost:3000/"));
+                descriptor.RedirectUris.Add(new Uri("https://localhost:3000/callback"));
+                descriptor.PostLogoutRedirectUris.Add(new Uri("https://localhost:3000/"));
+            }
+            else
+            {
+                foreach (var uri in spaRedirectUris) descriptor.RedirectUris.Add(new Uri(uri));
+                foreach (var uri in spaPostLogoutUris) descriptor.PostLogoutRedirectUris.Add(new Uri(uri));
+            }
+
+            await applicationManager.CreateAsync(descriptor);
+            logger.LogInformation("✅ Aplicação '{ClientId}' criada no OpenIddict", spaClientId);
         }
         else
         {
-            logger.LogInformation("⚠️ Aplicação 'gestus_spa' já existe no OpenIddict");
+            logger.LogInformation("⚠️ Aplicação '{ClientId}' já existe no OpenIddict", spaClientId);
         }
     }
 
@@ -435,19 +463,20 @@ public static class SeederInicial
         logger.LogInformation($"📋 Papéis existentes depois: {papeisCountDepois}");
     }
 
-    private static async Task CriarSuperAdmin(UserManager<Usuario> userManager, ILogger logger)
+    private static async Task<Usuario?> CriarSuperAdmin(UserManager<Usuario> userManager, ILogger logger)
     {
         logger.LogInformation("👑 Criando usuário Super Admin...");
-        logger.LogInformation("👑 Verificando se usuário super@gestus.local já existe...");
+        logger.LogInformation("👑 Verificando se usuário willian.cavalcante@skymsen.com já existe...");
 
-        var superAdminExiste = await userManager.FindByEmailAsync("super@gestus.local");
+        var emailSuper = "willian.cavalcante@skymsen.com";
+        var superAdminExiste = await userManager.FindByEmailAsync(emailSuper);
         
         if (superAdminExiste == null)
         {
             var superAdmin = new Usuario
             {
-                UserName = "super@gestus.local",
-                Email = "super@gestus.local",
+                UserName = emailSuper,
+                Email = emailSuper,
                 EmailConfirmed = true,
                 Nome = "Super",
                 Sobrenome = "Admin",
@@ -456,7 +485,7 @@ public static class SeederInicial
                 DataCriacao = DateTime.UtcNow
             };
 
-            var resultado = await userManager.CreateAsync(superAdmin, "SuperAdmin123!");
+            var resultado = await userManager.CreateAsync(superAdmin, "Reboot3!");
             
             if (resultado.Succeeded)
             {
@@ -469,16 +498,20 @@ public static class SeederInicial
                     if (resultadoPapel.Succeeded)
                     {
                         logger.LogInformation("✅ Papel SuperAdmin atribuído ao usuário");
+                        return superAdmin;
                     }
                     else
                     {
                         logger.LogError($"❌ Erro ao atribuir papel SuperAdmin: {string.Join(", ", resultadoPapel.Errors.Select(e => e.Description))}");
+                        return superAdmin;
                     }
                 }
+                return superAdmin;
             }
             else
             {
                 logger.LogError($"❌ Erro ao criar Super Admin: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
+                return null;
             }
         }
         else
@@ -502,13 +535,8 @@ public static class SeederInicial
             {
                 logger.LogInformation($"🔍 Usuário tem papel SuperAdmin: {temPapel}");
             }
-        }
 
-        var usuarioFinal = await userManager.FindByEmailAsync("super@gestus.local");
-        if (usuarioFinal != null)
-        {
-            var papeis = await userManager.GetRolesAsync(usuarioFinal);
-            logger.LogInformation($"✅ Usuário final - ID: {usuarioFinal.Id}, Papéis: {string.Join(", ", papeis)}");
+            return superAdminExiste;
         }
     }
 
@@ -665,13 +693,11 @@ public static class SeederInicial
 
         var todasPermissoes = await context.Permissoes.Where(p => p.Ativo).ToListAsync();
         
-        // ✅ SUPER ADMIN - TODAS AS PERMISSÕES (SEMPRE)
+        // ✅ SuperAdmin atua como usuário root e não precisa de permissões explícitas
         var superAdminPapel = await roleManager.FindByNameAsync("SuperAdmin");
         if (superAdminPapel != null)
         {
-            logger.LogInformation("👑 Associando TODAS as permissões ao Super Admin...");
-            await AssociarPermissoesAoPapel(context, superAdminPapel.Id, todasPermissoes, logger, "SuperAdmin");
-            logger.LogInformation($"✅ Super Admin agora tem {todasPermissoes.Count} permissões");
+            logger.LogInformation("👑 SuperAdmin não requer associação explícita de permissões (bypass total)");
         }
         else
         {
@@ -682,23 +708,19 @@ public static class SeederInicial
         var adminPapel = await roleManager.FindByNameAsync("Admin");
         if (adminPapel != null)
         {
-            var permissoesAdmin = todasPermissoes.Where(p => 
-                // Usuários (sem exclusão permanente)
-                (p.Recurso == "Usuarios" && p.Acao != "ExcluirPermanente") ||
-                // Papéis (básico)
-                (p.Recurso == "Papeis" && new[] { "Listar", "Visualizar" }.Contains(p.Acao)) ||
-                // Permissões (apenas visualizar)
-                (p.Recurso == "Permissoes" && new[] { "Listar", "Visualizar" }.Contains(p.Acao)) ||
-                // Grupos (completo)
-                p.Recurso == "Grupos" ||
-                // Auditoria (sem exportar)
-                (p.Recurso == "Auditoria" && p.Acao != "Exportar") ||
-                // Email (básico)
-                (p.Recurso == "Email" && new[] { "Enviar", "Listar", "Visualizar" }.Contains(p.Acao))
-            ).ToList();
+            // ✅ Administrador: TODAS as permissões, exceto gerenciamento de papéis/administradores/super admin e exclusão permanente de usuários
+            var permissoesAdmin = todasPermissoes
+                .Where(p =>
+                    // Excluir capacidades de gerenciar papéis
+                    !(p.Recurso == "Usuarios" && p.Acao == "GerenciarPapeis") &&
+                    !(p.Recurso == "Papeis" && new[] { "Criar", "Editar", "Remover", "GerenciarPermissoes" }.Contains(p.Acao)) &&
+                    // Por segurança, não permitir exclusão permanente de usuários
+                    !(p.Recurso == "Usuarios" && p.Acao == "ExcluirPermanente")
+                )
+                .ToList();
             
             await AssociarPermissoesAoPapel(context, adminPapel.Id, permissoesAdmin, logger, "Admin");
-            logger.LogInformation($"✅ Admin agora tem {permissoesAdmin.Count} permissões");
+            logger.LogInformation($"✅ Admin agora tem {permissoesAdmin.Count} permissões (com ressalvas)");
         }
 
         // ✅ USUÁRIO - PERMISSÕES BÁSICAS
@@ -814,6 +836,64 @@ public static class SeederInicial
         }
     }
 
+    private static async Task<Usuario?> CriarAdministrador(UserManager<Usuario> userManager, ILogger logger)
+    {
+        logger.LogInformation("👤 Criando usuário Administrador...");
+        var emailAdmin = "admin@gestus.local";
+        var adminExiste = await userManager.FindByEmailAsync(emailAdmin);
+
+        if (adminExiste == null)
+        {
+            var admin = new Usuario
+            {
+                UserName = emailAdmin,
+                Email = emailAdmin,
+                EmailConfirmed = true,
+                Nome = "Administrador",
+                Sobrenome = "Gestus",
+                NomeCompleto = "Administrador",
+                Ativo = true,
+                DataCriacao = DateTime.UtcNow
+            };
+
+            var resultado = await userManager.CreateAsync(admin, "Reboot3!");
+            if (resultado.Succeeded)
+            {
+                logger.LogInformation($"✅ Administrador criado com ID: {admin.Id}");
+
+                var temPapelAdmin = await userManager.IsInRoleAsync(admin, "Admin");
+                if (!temPapelAdmin)
+                {
+                    var resultadoPapel = await userManager.AddToRoleAsync(admin, "Admin");
+                    if (!resultadoPapel.Succeeded)
+                    {
+                        logger.LogError($"❌ Erro ao atribuir papel Admin: {string.Join(", ", resultadoPapel.Errors.Select(e => e.Description))}");
+                    }
+                }
+                return admin;
+            }
+            else
+            {
+                logger.LogError($"❌ Erro ao criar Administrador: {string.Join(", ", resultado.Errors.Select(e => e.Description))}");
+                return null;
+            }
+        }
+        else
+        {
+            logger.LogInformation($"⚠️  Administrador já existe (ID: {adminExiste.Id})");
+            var temPapel = await userManager.IsInRoleAsync(adminExiste, "Admin");
+            if (!temPapel)
+            {
+                var resultadoPapel = await userManager.AddToRoleAsync(adminExiste, "Admin");
+                if (!resultadoPapel.Succeeded)
+                {
+                    logger.LogError($"❌ Erro ao atribuir papel Admin ao usuário existente: {string.Join(", ", resultadoPapel.Errors.Select(e => e.Description))}");
+                }
+            }
+            return adminExiste;
+        }
+    }
+
     private static async Task CriarScopesOpenIddict(IOpenIddictScopeManager scopeManager, ILogger logger)
     {
         logger.LogInformation("🔧 Criando scopes OpenIddict...");
@@ -864,6 +944,118 @@ public static class SeederInicial
         else
         {
             logger.LogInformation("⚠️ Scope 'roles' já existe no OpenIddict");
+        }
+    }
+
+    // =========================
+    // APLICAÇÕES DO SISTEMA
+    // =========================
+    private static async Task CriarTiposStatusAplicacaoBase(GestusDbContexto context, ILogger logger)
+    {
+        logger.LogInformation("🧱 Criando tipos e status de aplicação base...");
+
+        // TipoAplicacao: webapp
+        if (!await context.TiposAplicacao.AnyAsync(t => t.Codigo == "webapp"))
+        {
+            context.TiposAplicacao.Add(new TipoAplicacao
+            {
+                Codigo = "webapp",
+                Nome = "Aplicação Web",
+                Descricao = "Aplicação Web baseada em navegador",
+                Ordem = 1,
+                DataCriacao = DateTime.UtcNow
+            });
+            logger.LogInformation("✅ TipoAplicacao 'webapp' criado");
+        }
+
+        // StatusAplicacao: ativa
+        if (!await context.StatusAplicacao.AnyAsync(s => s.Codigo == "ativa"))
+        {
+            context.StatusAplicacao.Add(new StatusAplicacao
+            {
+                Codigo = "ativa",
+                Nome = "Ativa",
+                Descricao = "Aplicação ativa e disponível",
+                CorFundo = "#28a745",
+                CorTexto = "#ffffff",
+                Icone = "✅",
+                PermiteAcesso = true,
+                PermiteNovoUsuario = true,
+                VisivelParaUsuarios = true,
+                Padrao = true,
+                Ordem = 1,
+                DataCriacao = DateTime.UtcNow
+            });
+            logger.LogInformation("✅ StatusAplicacao 'ativa' criado");
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task CriarAplicacaoGestus(GestusDbContexto context, IConfiguration configuration, ILogger logger)
+    {
+        logger.LogInformation("🧩 Criando aplicação 'Gestus'...");
+
+        var baseUrl = configuration["App:BaseUrl"] ?? "https://localhost:7001";
+        var tipo = await context.TiposAplicacao.FirstOrDefaultAsync(t => t.Codigo == "webapp");
+        var status = await context.StatusAplicacao.FirstOrDefaultAsync(s => s.Codigo == "ativa");
+
+        if (tipo == null || status == null)
+        {
+            logger.LogWarning("⚠️ Tipo 'webapp' ou Status 'ativa' não encontrados. Pulando criação de aplicação Gestus.");
+            return;
+        }
+
+        var existe = await context.Aplicacoes.AnyAsync(a => a.Codigo == "gestus");
+        if (!existe)
+        {
+            var app = new Aplicacao
+            {
+                Nome = "Gestus",
+                Codigo = "gestus",
+                Descricao = "Plataforma Gestus IAM",
+                UrlBase = baseUrl,
+                TipoAplicacaoId = tipo.Id,
+                StatusAplicacaoId = status.Id,
+                Versao = "1.0.0",
+                Ativa = true,
+                RequerAprovacao = false,
+                PermiteAutoRegistro = false,
+                NivelSeguranca = 5,
+                CriadoPorId = 1,
+                DataCriacao = DateTime.UtcNow
+            };
+            context.Aplicacoes.Add(app);
+            await context.SaveChangesAsync();
+            logger.LogInformation("✅ Aplicação 'Gestus' criada");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Aplicação 'Gestus' já existe");
+        }
+    }
+
+    private static async Task ConcederAcessoAplicacaoGestus(GestusDbContexto context, ILogger logger, int? usuarioId)
+    {
+        if (!usuarioId.HasValue) return;
+
+        var appGestus = await context.Aplicacoes.FirstOrDefaultAsync(a => a.Codigo == "gestus");
+        if (appGestus == null) return;
+
+        var existe = await context.UsuariosAplicacao.AnyAsync(ua => ua.UsuarioId == usuarioId.Value && ua.AplicacaoId == appGestus.Id);
+        if (!existe)
+        {
+            context.UsuariosAplicacao.Add(new UsuarioAplicacao
+            {
+                UsuarioId = usuarioId.Value,
+                AplicacaoId = appGestus.Id,
+                Aprovado = true,
+                DataAprovacao = DateTime.UtcNow,
+                Justificativa = "Acesso padrão",
+                Ativo = true
+            });
+            await context.SaveChangesAsync();
+            logger.LogInformation("✅ Acesso do usuário {UsuarioId} à aplicação Gestus concedido", usuarioId);
         }
     }
 }
