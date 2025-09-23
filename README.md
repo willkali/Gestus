@@ -81,14 +81,6 @@ Executado no startup e idempotente. Cria/garante:
 - Aplicação “Gestus” (webapp/ativa) e acesso aprovado para SuperAdmin/Admin
 - Templates de email padrão (configuração de email só é criada automaticamente se não existir nenhuma — ativa ou inativa)
 
-Contas padrão:
-- Super Admin
-  - Email: `willian.cavalcante@skymsen.com`
-  - Senha: `Reboot3!`
-- Administrador
-  - Email: `super@gestus.local`
-  - Senha: `Reboot3!`
-
 
 ## Autenticação
 

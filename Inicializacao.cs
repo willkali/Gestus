@@ -9,6 +9,12 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Http.Resilience;
 using System.Reflection;
 using Gestus.Services;
+using System.Text;
+using System.Net.Http;
+using System.Linq;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Primitives;
 
 namespace Gestus;
 
@@ -107,14 +113,99 @@ public static class Inicializacao
             app.UseHsts();
         }
 
-        // HTTPS Redirection
-        app.UseHttpsRedirection();
+        // HTTPS redirection controlado por configuração (padrão: desativado)
+        var enforceHttps = app.Configuration.GetValue<bool>("Security:EnforceHttps", false);
+        if (enforceHttps)
+        {
+            app.UseHttpsRedirection();
+        }
 
-        // Arquivos estáticos
-        app.UseStaticFiles();
+        // Arquivos estáticos somente se a pasta existir
+        var webRoot = app.Environment.WebRootPath;
+        if (!string.IsNullOrWhiteSpace(webRoot) && Directory.Exists(webRoot))
+        {
+            app.UseStaticFiles();
+        }
+        else
+        {
+            logger.LogWarning("The WebRootPath was not found: {WebRootPath}. Static files may be unavailable.", webRoot);
+        }
 
         // CORS
         app.UseCors("PoliticaCorsGestus");
+
+        // Dev helper para erro de Content-Type no /connect/token
+        if (environment.IsDevelopment())
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.Equals("/connect/token", StringComparison.OrdinalIgnoreCase) &&
+                    string.IsNullOrEmpty(context.Request.ContentType))
+                {
+                    context.Response.StatusCode = 400;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync("{\"error\":\"invalid_request\",\"error_description\":\"Missing Content-Type. Use 'application/x-www-form-urlencoded' and URL-encoded body.\",\"error_uri\":\"https://documentation.openiddict.com/errors/ID2081\"}");
+                    return;
+                }
+                await next();
+            });
+        }
+
+        // Injeção de client_id/client_secret padrão (controlado por configuração)
+        if (app.Configuration.GetSection("Security:DefaultClient").GetValue<bool>("Enabled", true))
+        {
+            var defaultClientId = app.Configuration.GetSection("Security:DefaultClient").GetValue<string>("ClientId") ?? "gestus_api";
+            var defaultClientSecret = app.Configuration.GetSection("Security:DefaultClient").GetValue<string>("ClientSecret") ?? "gestus_api_secret_2024";
+
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.Equals("/connect/token", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(context.Request.Method, "POST", StringComparison.OrdinalIgnoreCase)
+                    && context.Request.HasFormContentType)
+                {
+                    // Permite reler o corpo depois
+                    context.Request.EnableBuffering();
+
+                    var form = await context.Request.ReadFormAsync();
+                    var dict = new Dictionary<string, StringValues>(StringComparer.Ordinal);
+                    foreach (var kv in form)
+                    {
+                        dict[kv.Key] = kv.Value;
+                    }
+
+                    var changed = false;
+                    if (!dict.TryGetValue("client_id", out var cid) || StringValues.IsNullOrEmpty(cid))
+                    {
+                        dict["client_id"] = new StringValues(defaultClientId);
+                        changed = true;
+                    }
+                    if (!dict.TryGetValue("client_secret", out var csec) || StringValues.IsNullOrEmpty(csec))
+                    {
+                        dict["client_secret"] = new StringValues(defaultClientSecret);
+                        changed = true;
+                    }
+
+                    if (changed)
+                    {
+                        // Reescreve o corpo como x-www-form-urlencoded com os campos injetados
+                        var payload = string.Join("&", dict.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value.ToString())}"));
+                        var bytes = Encoding.UTF8.GetBytes(payload);
+                        context.Request.Body = new MemoryStream(bytes);
+                        context.Request.ContentLength = bytes.Length;
+                        context.Request.ContentType = "application/x-www-form-urlencoded";
+
+                        // Reseta o parser para que próximos componentes releiam o form do novo corpo
+                        context.Features.Set<IFormFeature>(new FormFeature(context.Request));
+                    }
+
+                    // Garante que a posição volte ao início para quem vier depois
+                    if (context.Request.Body.CanSeek)
+                        context.Request.Body.Position = 0;
+                }
+
+                await next();
+            });
+        }
 
         // Autenticação e Autorização
         app.UseAuthentication();

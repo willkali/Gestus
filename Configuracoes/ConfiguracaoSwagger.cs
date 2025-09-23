@@ -32,6 +32,10 @@ public static class ConfiguracaoSwagger
                 }
             });
 
+            // Servidores HTTP/HTTPS para facilitar testes locais
+            options.AddServer(new OpenApiServer { Url = "http://localhost:5000" });
+            options.AddServer(new OpenApiServer { Url = "https://localhost:7001" });
+
             // ✅ CONFIGURAÇÃO CORRETA DO JWT BEARER
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
@@ -65,6 +69,9 @@ public static class ConfiguracaoSwagger
 
             // ✅ SISTEMA APRIMORADO DE SCHEMA IDs - RESOLVER CONFLITOS COM GENÉRICOS
             options.CustomSchemaIds(type => GerarSchemaIdUnico(type));
+
+            // Documentar endpoints OpenIddict para enviar application/x-www-form-urlencoded pelo Swagger
+            options.DocumentFilter<OpenIddictTokenDocumentFilter>();
 
             // ✅ CONFIGURAÇÕES ADICIONAIS PARA MELHOR DOCUMENTAÇÃO
             options.DescribeAllParametersInCamelCase();
