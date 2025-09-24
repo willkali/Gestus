@@ -71,4 +71,14 @@
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
   </ItemGroup>
+
+  <!-- Excluir projeto WPF do build deste projeto Web -->
+  <ItemGroup>
+    <Compile Remove="Gestus.Wpf\**\*.cs" />
+    <None Remove="Gestus.Wpf\**\*" />
+    <Content Remove="Gestus.Wpf\**\*" />
+    <EmbeddedResource Remove="Gestus.Wpf\**\*" />
+    <Resource Remove="Gestus.Wpf\**\*" />
+    <Page Remove="Gestus.Wpf\**\*.xaml" />
+  </ItemGroup>
 </Project>
