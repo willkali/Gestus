@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using OpenIddict.Validation.AspNetCore;
+using OpenIddict.Abstractions;
+using static OpenIddict.Abstractions.OpenIddictConstants; // ✅ ADICIONAR
 
 namespace Gestus.Configuracoes;
 
@@ -32,8 +34,16 @@ public static class ConfiguracaoAutenticacao
                 // Configurar fluxos permitidos
                 options.AllowClientCredentialsFlow()
                        .AllowAuthorizationCodeFlow()
-                       .AllowRefreshTokenFlow()
+                       .AllowRefreshTokenFlow() // ✅ JÁ ESTAVA CORRETO
                        .AllowPasswordFlow();
+
+                // ✅ ADICIONAR: Registrar todos os scopes necessários
+                options.RegisterScopes(
+                    Scopes.OpenId,
+                    Scopes.Profile, 
+                    Scopes.Email,
+                    Scopes.Roles,
+                    Scopes.OfflineAccess); // ✅ IMPORTANTE: Registrar offline_access
 
                 // ✅ CERTIFICADOS PARA DESENVOLVIMENTO
                 options.AddDevelopmentEncryptionCertificate()

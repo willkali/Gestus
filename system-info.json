@@ -1,0 +1,41 @@
+{
+  "basic": {
+    "name": "Gestus",
+    "fullName": "Gestus - Sistema de Gestão IAM",
+    "version": "1.0.0",
+    "description": "Sistema de gestão de identidade e acesso corporativo"
+  },
+  "company": {
+    "name": "Gestus Ltda",
+    "website": "",
+    "support": "",
+    "copyright": "© 2025 Todos os direitos reservados."
+  },
+  "backend": {
+    "framework": ".NET 8",
+    "database": "PostgreSQL",
+    "orm": "Entity Framework Core",
+    "authentication": "OpenIddict",
+    "logging": "Serilog",
+    "monitoring": "Prometheus",
+    "healthChecks": "AspNetCore.HealthChecks",
+    "validation": "FluentValidation",
+    "mapping": "AutoMapper",
+    "resilience": "Polly"
+  },
+  "frontend": {
+    "framework": "React 18",
+    "ui": "Material-UI",
+    "routing": "React Router",
+    "state": "React Context",
+    "http": "Axios",
+    "forms": "React Hook Form",
+    "icons": "Material Icons",
+    "styling": "Emotion"
+  },
+  "messages": {
+    "healthyStatus": "healthy",
+    "activeStatus": "active",
+    "errorMessage": "Erro interno do servidor"
+  }
+}

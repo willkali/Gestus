@@ -339,17 +339,19 @@ public static class SeederInicial
                 DisplayName = "Gestus API",
                 ClientType = OpenIddictConstants.ClientTypes.Confidential,
                 Permissions =
-                {
-                    OpenIddictConstants.Permissions.Endpoints.Token,
-                    OpenIddictConstants.Permissions.Endpoints.Introspection,
-                    OpenIddictConstants.Permissions.GrantTypes.ClientCredentials,
-                    OpenIddictConstants.Permissions.GrantTypes.Password,
-                    OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
-                    OpenIddictConstants.Permissions.Scopes.Email,
-                    OpenIddictConstants.Permissions.Scopes.Profile,
-                    OpenIddictConstants.Permissions.Scopes.Roles,
-                    "scp:openid"
-                }
+        {
+            OpenIddictConstants.Permissions.Endpoints.Token,
+            OpenIddictConstants.Permissions.Endpoints.Introspection,
+            OpenIddictConstants.Permissions.GrantTypes.ClientCredentials,
+            OpenIddictConstants.Permissions.GrantTypes.Password,
+            OpenIddictConstants.Permissions.GrantTypes.RefreshToken, // ✅ Refresh token grant
+            OpenIddictConstants.Permissions.Scopes.Email,
+            OpenIddictConstants.Permissions.Scopes.Profile,
+            OpenIddictConstants.Permissions.Scopes.Roles,
+            // ✅ CORREÇÃO: Usar a constante correta para offline_access
+            OpenIddictConstants.Permissions.Prefixes.Scope + OpenIddictConstants.Scopes.OfflineAccess,
+            "scp:openid"
+        }
             });
 
             logger.LogInformation("✅ Aplicação '{ClientId}' criada no OpenIddict", apiClientId);
@@ -357,6 +359,23 @@ public static class SeederInicial
         else
         {
             logger.LogInformation("⚠️ Aplicação '{ClientId}' já existe no OpenIddict", apiClientId);
+
+            // ✅ VERIFICAR SE PRECISA ATUALIZAR PERMISSÕES
+            var existingApp = await applicationManager.FindByClientIdAsync(apiClientId);
+            if (existingApp != null)
+            {
+                var descriptor = new OpenIddictApplicationDescriptor();
+                await applicationManager.PopulateAsync(descriptor, existingApp);
+
+                // ✅ CORREÇÃO: Verificar com a constante correta
+                var offlineAccessPermission = OpenIddictConstants.Permissions.Prefixes.Scope + OpenIddictConstants.Scopes.OfflineAccess;
+                if (!descriptor.Permissions.Contains(offlineAccessPermission))
+                {
+                    descriptor.Permissions.Add(offlineAccessPermission);
+                    await applicationManager.UpdateAsync(existingApp, descriptor);
+                    logger.LogInformation("✅ Permissão offline_access adicionada à aplicação '{ClientId}'", apiClientId);
+                }
+            }
         }
 
         // Aplicação para Frontend (SPA)
@@ -369,21 +388,23 @@ public static class SeederInicial
                 DisplayName = "Gestus SPA",
                 ClientType = OpenIddictConstants.ClientTypes.Public,
                 Permissions =
-                {
-                    OpenIddictConstants.Permissions.Endpoints.Authorization,
-                    OpenIddictConstants.Permissions.Endpoints.Token,
-                    OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
-                    OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
-                    OpenIddictConstants.Permissions.ResponseTypes.Code,
-                    OpenIddictConstants.Permissions.Scopes.Email,
-                    OpenIddictConstants.Permissions.Scopes.Profile,
-                    OpenIddictConstants.Permissions.Scopes.Roles,
-                    "scp:openid"
-                },
+        {
+            OpenIddictConstants.Permissions.Endpoints.Authorization,
+            OpenIddictConstants.Permissions.Endpoints.Token,
+            OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
+            OpenIddictConstants.Permissions.GrantTypes.RefreshToken, // ✅ Refresh token para SPA
+            OpenIddictConstants.Permissions.ResponseTypes.Code,
+            OpenIddictConstants.Permissions.Scopes.Email,
+            OpenIddictConstants.Permissions.Scopes.Profile,
+            OpenIddictConstants.Permissions.Scopes.Roles,
+            // ✅ CORREÇÃO: Usar a constante correta para offline_access
+            OpenIddictConstants.Permissions.Prefixes.Scope + OpenIddictConstants.Scopes.OfflineAccess,
+            "scp:openid"
+        },
                 Requirements =
-                {
-                    OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange
-                }
+        {
+            OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange
+        }
             };
 
             // Adicionar URIs de configuração se houver
@@ -470,7 +491,7 @@ public static class SeederInicial
 
         var emailSuper = "willian.cavalcante@skymsen.com";
         var superAdminExiste = await userManager.FindByEmailAsync(emailSuper);
-        
+
         if (superAdminExiste == null)
         {
             var superAdmin = new Usuario
@@ -486,11 +507,11 @@ public static class SeederInicial
             };
 
             var resultado = await userManager.CreateAsync(superAdmin, "Reboot3!");
-            
+
             if (resultado.Succeeded)
             {
                 logger.LogInformation($"✅ Super Admin criado com ID: {superAdmin.Id}");
-                
+
                 var papelSuperAdminExiste = await userManager.IsInRoleAsync(superAdmin, "SuperAdmin");
                 if (!papelSuperAdminExiste)
                 {
@@ -517,7 +538,7 @@ public static class SeederInicial
         else
         {
             logger.LogInformation($"⚠️  Super Admin já existe (ID: {superAdminExiste.Id})");
-            
+
             var temPapel = await userManager.IsInRoleAsync(superAdminExiste, "SuperAdmin");
             if (!temPapel)
             {
@@ -577,24 +598,24 @@ public static class SeederInicial
             new { Nome = "Papeis.Editar", Descricao = "Editar papéis existentes", Recurso = "Papeis", Acao = "Editar", Categoria = "Sistema" },
             new { Nome = "Papeis.Remover", Descricao = "Remover papéis", Recurso = "Papeis", Acao = "Remover", Categoria = "Sistema" },
             new { Nome = "Papeis.GerenciarPermissoes", Descricao = "Gerenciar permissões de papéis", Recurso = "Papeis", Acao = "GerenciarPermissoes", Categoria = "Sistema" },
-            
+
             new { Nome = "Permissoes.Listar", Descricao = "Listar permissões", Recurso = "Permissoes", Acao = "Listar", Categoria = "Sistema" },
             new { Nome = "Permissoes.Visualizar", Descricao = "Visualizar detalhes de permissões", Recurso = "Permissoes", Acao = "Visualizar", Categoria = "Sistema" },
             new { Nome = "Permissoes.Criar", Descricao = "Criar novas permissões", Recurso = "Permissoes", Acao = "Criar", Categoria = "Sistema" },
             new { Nome = "Permissoes.Editar", Descricao = "Editar permissões existentes", Recurso = "Permissoes", Acao = "Editar", Categoria = "Sistema" },
             new { Nome = "Permissoes.Remover", Descricao = "Remover permissões", Recurso = "Permissoes", Acao = "Remover", Categoria = "Sistema" },
-            
+
             new { Nome = "Grupos.Listar", Descricao = "Listar grupos", Recurso = "Grupos", Acao = "Listar", Categoria = "Sistema" },
             new { Nome = "Grupos.Visualizar", Descricao = "Visualizar detalhes de grupos", Recurso = "Grupos", Acao = "Visualizar", Categoria = "Sistema" },
             new { Nome = "Grupos.Criar", Descricao = "Criar novos grupos", Recurso = "Grupos", Acao = "Criar", Categoria = "Sistema" },
             new { Nome = "Grupos.Editar", Descricao = "Editar grupos existentes", Recurso = "Grupos", Acao = "Editar", Categoria = "Sistema" },
             new { Nome = "Grupos.Remover", Descricao = "Remover grupos", Recurso = "Grupos", Acao = "Remover", Categoria = "Sistema" },
             new { Nome = "Grupos.GerenciarMembros", Descricao = "Gerenciar membros de grupos", Recurso = "Grupos", Acao = "GerenciarMembros", Categoria = "Sistema" },
-            
+
             new { Nome = "Auditoria.Listar", Descricao = "Listar registros de auditoria", Recurso = "Auditoria", Acao = "Listar", Categoria = "Sistema" },
             new { Nome = "Auditoria.Visualizar", Descricao = "Visualizar detalhes de auditoria", Recurso = "Auditoria", Acao = "Visualizar", Categoria = "Sistema" },
             new { Nome = "Auditoria.Exportar", Descricao = "Exportar dados de auditoria", Recurso = "Auditoria", Acao = "Exportar", Categoria = "Sistema" },
-            
+
             new { Nome = "Sistema.Configurar", Descricao = "Configurar sistema", Recurso = "Sistema", Acao = "Configurar", Categoria = "Sistema" },
             new { Nome = "Sistema.Monitorar", Descricao = "Monitorar sistema e logs", Recurso = "Sistema", Acao = "Monitorar", Categoria = "Sistema" },
             new { Nome = "Sistema.Backup", Descricao = "Fazer backup do sistema", Recurso = "Sistema", Acao = "Backup", Categoria = "Sistema" },
@@ -611,9 +632,9 @@ public static class SeederInicial
         foreach (var permissaoInfo in permissoesBase)
         {
             // ✅ VERIFICAR POR RECURSO E AÇÃO (não por nome)
-            var permissaoExiste = permissoesExistentes.Any(p => 
+            var permissaoExiste = permissoesExistentes.Any(p =>
                 p.Recurso == permissaoInfo.Recurso && p.Acao == permissaoInfo.Acao);
-            
+
             if (!permissaoExiste)
             {
                 permissoesParaCriar.Add(new Permissao
@@ -640,7 +661,7 @@ public static class SeederInicial
             catch (Exception ex)
             {
                 logger.LogError(ex, "❌ Erro ao criar permissões. Algumas podem já existir.");
-                
+
                 // ✅ SALVAR UMA POR UMA PARA IDENTIFICAR DUPLICATAS
                 var sucessos = 0;
                 foreach (var permissao in permissoesParaCriar)
@@ -650,7 +671,7 @@ public static class SeederInicial
                         // ✅ VERIFICAR NOVAMENTE ANTES DE INSERIR
                         var jaExiste = await context.Permissoes
                             .AnyAsync(p => p.Recurso == permissao.Recurso && p.Acao == permissao.Acao);
-                        
+
                         if (!jaExiste)
                         {
                             context.Permissoes.Add(permissao);
@@ -666,12 +687,12 @@ public static class SeederInicial
                     catch (Exception permEx)
                     {
                         logger.LogWarning($"⚠️ Erro ao criar permissão {permissao.Nome}: {permEx.Message}");
-                        
+
                         // ✅ LIMPAR TRACKING PARA PRÓXIMA TENTATIVA
                         context.Entry(permissao).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                     }
                 }
-                
+
                 if (sucessos > 0)
                 {
                     logger.LogInformation($"✅ {sucessos} permissões criadas com sucesso");
@@ -692,7 +713,7 @@ public static class SeederInicial
         logger.LogInformation("🔗 Associando permissões aos papéis...");
 
         var todasPermissoes = await context.Permissoes.Where(p => p.Ativo).ToListAsync();
-        
+
         // ✅ SuperAdmin atua como usuário root e não precisa de permissões explícitas
         var superAdminPapel = await roleManager.FindByNameAsync("SuperAdmin");
         if (superAdminPapel != null)
@@ -718,7 +739,7 @@ public static class SeederInicial
                     !(p.Recurso == "Usuarios" && p.Acao == "ExcluirPermanente")
                 )
                 .ToList();
-            
+
             await AssociarPermissoesAoPapel(context, adminPapel.Id, permissoesAdmin, logger, "Admin");
             logger.LogInformation($"✅ Admin agora tem {permissoesAdmin.Count} permissões (com ressalvas)");
         }
@@ -727,11 +748,11 @@ public static class SeederInicial
         var usuarioPapel = await roleManager.FindByNameAsync("Usuario");
         if (usuarioPapel != null)
         {
-            var permissoesUsuario = todasPermissoes.Where(p => 
+            var permissoesUsuario = todasPermissoes.Where(p =>
                 // Apenas visualizar próprio perfil (será controlado no controller)
                 (p.Recurso == "Usuarios" && p.Acao == "Visualizar")
             ).ToList();
-            
+
             await AssociarPermissoesAoPapel(context, usuarioPapel.Id, permissoesUsuario, logger, "Usuario");
             logger.LogInformation($"✅ Usuario agora tem {permissoesUsuario.Count} permissões");
         }
@@ -740,13 +761,13 @@ public static class SeederInicial
         var gestorUsuariosPapel = await roleManager.FindByNameAsync("GestorUsuarios");
         if (gestorUsuariosPapel != null)
         {
-            var permissoesGestorUsuarios = todasPermissoes.Where(p => 
+            var permissoesGestorUsuarios = todasPermissoes.Where(p =>
                 // Usuários (sem exclusão permanente e sem gerenciar papéis de admin)
                 (p.Recurso == "Usuarios" && !new[] { "ExcluirPermanente", "GerenciarPapeis" }.Contains(p.Acao)) ||
                 // Grupos (visualizar)
                 (p.Recurso == "Grupos" && new[] { "Listar", "Visualizar" }.Contains(p.Acao))
             ).ToList();
-            
+
             await AssociarPermissoesAoPapel(context, gestorUsuariosPapel.Id, permissoesGestorUsuarios, logger, "GestorUsuarios");
             logger.LogInformation($"✅ GestorUsuarios agora tem {permissoesGestorUsuarios.Count} permissões");
         }
@@ -898,6 +919,7 @@ public static class SeederInicial
     {
         logger.LogInformation("🔧 Criando scopes OpenIddict...");
 
+        // Scope profile
         if (await scopeManager.FindByNameAsync("profile") == null)
         {
             await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
@@ -914,6 +936,7 @@ public static class SeederInicial
             logger.LogInformation("⚠️ Scope 'profile' já existe no OpenIddict");
         }
 
+        // Scope email
         if (await scopeManager.FindByNameAsync("email") == null)
         {
             await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
@@ -930,6 +953,7 @@ public static class SeederInicial
             logger.LogInformation("⚠️ Scope 'email' já existe no OpenIddict");
         }
 
+        // Scope roles
         if (await scopeManager.FindByNameAsync("roles") == null)
         {
             await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
@@ -944,6 +968,23 @@ public static class SeederInicial
         else
         {
             logger.LogInformation("⚠️ Scope 'roles' já existe no OpenIddict");
+        }
+
+        // ✅ CORREÇÃO: Usar OpenIddictConstants.Scopes.OfflineAccess (sem .Permissions.Scopes)
+        if (await scopeManager.FindByNameAsync(OpenIddictConstants.Scopes.OfflineAccess) == null)
+        {
+            await scopeManager.CreateAsync(new OpenIddictScopeDescriptor
+            {
+                Name = OpenIddictConstants.Scopes.OfflineAccess,
+                DisplayName = "Offline Access",
+                Description = "Access to refresh tokens for offline access",
+                Resources = { "gestus_api" }
+            });
+            logger.LogInformation("✅ Scope 'offline_access' criado no OpenIddict");
+        }
+        else
+        {
+            logger.LogInformation("⚠️ Scope 'offline_access' já existe no OpenIddict");
         }
     }
 

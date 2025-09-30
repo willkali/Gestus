@@ -26,14 +26,102 @@ public class PerfilUsuario
     public string? TelefoneAlternativo { get; set; }
     public string PreferenciaIdioma { get; set; } = "pt-BR";
     public string PreferenciaTimezone { get; set; } = "America/Sao_Paulo";
-    
-    // Configurações de privacidade (visíveis apenas para o próprio usuário)
     public ConfiguracaoPrivacidade? Privacidade { get; set; }
     public ConfiguracaoNotificacao? Notificacoes { get; set; }
-    
+    public CompletudePerfil? CompletudePerfil { get; set; }
     public DateTime DataCriacao { get; set; }
     public DateTime? DataAtualizacao { get; set; }
     public DateTime? UltimoLogin { get; set; }
+}
+
+/// <summary>
+/// Informações sobre completude do perfil
+/// </summary>
+public class CompletudePerfil
+{
+    /// <summary>
+    /// Percentual de completude (0-100)
+    /// </summary>
+    public double PercentualCompleto { get; set; }
+
+    /// <summary>
+    /// Quantidade de campos preenchidos
+    /// </summary>
+    public int CamposPreenchidos { get; set; }
+
+    /// <summary>
+    /// Total de campos possíveis
+    /// </summary>
+    public int TotalCampos { get; set; }
+
+    /// <summary>
+    /// Todos os campos obrigatórios estão completos
+    /// </summary>
+    public bool CamposObrigatoriosCompletos { get; set; }
+
+    /// <summary>
+    /// Nível textual da completude (Excelente, Muito Bom, etc.)
+    /// </summary>
+    public string NivelCompletude { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Cor sugerida para exibição (hex)
+    /// </summary>
+    public string Cor { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Lista detalhada de campos e seu status
+    /// </summary>
+    public List<CampoCompletude> Campos { get; set; } = new();
+
+    /// <summary>
+    /// Sugestões para melhorar o perfil
+    /// </summary>
+    public List<string> Sugestoes { get; set; } = new();
+
+    /// <summary>
+    /// Próximo passo sugerido
+    /// </summary>
+    public string ProximoPasso { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Quando foi calculado
+    /// </summary>
+    public DateTime DataCalculado { get; set; }
+}
+
+/// <summary>
+/// Informações sobre um campo específico do perfil
+/// </summary>
+public class CampoCompletude
+{
+    public CampoCompletude(string nome, bool preenchido, bool obrigatorio, int peso)
+    {
+        Nome = nome;
+        Preenchido = preenchido;
+        Obrigatorio = obrigatorio;
+        Peso = peso;
+    }
+
+    /// <summary>
+    /// Nome do campo
+    /// </summary>
+    public string Nome { get; set; }
+
+    /// <summary>
+    /// Se o campo está preenchido
+    /// </summary>
+    public bool Preenchido { get; set; }
+
+    /// <summary>
+    /// Se o campo é obrigatório
+    /// </summary>
+    public bool Obrigatorio { get; set; }
+
+    /// <summary>
+    /// Peso do campo na pontuação (1-15)
+    /// </summary>
+    public int Peso { get; set; }
 }
 
 /// <summary>

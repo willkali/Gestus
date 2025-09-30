@@ -15,6 +15,8 @@ using System.Linq;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Primitives;
+using Gestus.Converters;
+using System.Text.Json;
 
 namespace Gestus;
 
@@ -35,7 +37,7 @@ public static class Inicializacao
         services.AdicionarEntityFramework(configuration);
 
         // ADICIONAR: Serviços personalizados
-        services.AddScoped<ITimezoneService, TimezoneService>();
+        services.AddSingleton<ITimezoneService, TimezoneService>();
         services.AddScoped<IArquivoService, ArquivoService>();
 
         // SERVIÇOS DE CRIPTOGRAFIA E EMAIL
@@ -45,13 +47,14 @@ public static class Inicializacao
 
         // Controllers e API
         services.AddControllers()
-                .AddNewtonsoftJson(options =>
+                .AddJsonOptions(options =>
                 {
-                    options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
-                    options.SerializerSettings.DateTimeZoneHandling = Newtonsoft.Json.DateTimeZoneHandling.Utc;
+                    // ✅ REGISTRAR CONVERSORES PERSONALIZADOS
+                    options.JsonSerializerOptions.Converters.Add(new DateTimeJsonConverter());
+                    options.JsonSerializerOptions.Converters.Add(new NullableDateTimeJsonConverter());
+                    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                 });
 
-        // OpenAPI/Swagger
         services.AddEndpointsApiExplorer();
         services.ConfigurarSwagger(configuration);
 
@@ -121,14 +124,21 @@ public static class Inicializacao
         }
 
         // Arquivos estáticos somente se a pasta existir
-        var webRoot = app.Environment.WebRootPath;
-        if (!string.IsNullOrWhiteSpace(webRoot) && Directory.Exists(webRoot))
+        var frontEndPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+
+        if (Directory.Exists(frontEndPath))
         {
+            app.UseDefaultFiles(); // Para servir index.html automaticamente
             app.UseStaticFiles();
+
+            // Fallback para SPA - todas as rotas não-API devem retornar index.html
+            app.MapFallbackToFile("index.html");
+
+            logger.LogInformation("✅ Servindo arquivos estáticos do front-end de: {FrontEndPath}", frontEndPath);
         }
         else
         {
-            logger.LogWarning("The WebRootPath was not found: {WebRootPath}. Static files may be unavailable.", webRoot);
+            logger.LogWarning("⚠️ Pasta do front-end não encontrada em: {FrontEndPath}", frontEndPath);
         }
 
         // CORS
@@ -252,7 +262,7 @@ public static class Inicializacao
         try
         {
             logger.LogInformation("🔧 Verificando estado do banco de dados...");
-            
+
             // ✅ Verificar se pode conectar
             var canConnect = await context.Database.CanConnectAsync();
             if (!canConnect)

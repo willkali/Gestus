@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Collections.Immutable;
 using Microsoft.AspNetCore;
 using Gestus.Services;
+using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Gestus.Controllers;
 
@@ -76,6 +77,9 @@ public class TokenController : ControllerBase
         {
             _logger.LogInformation("🔐 Processando grant type password para: {Username}", request.Username);
 
+            // ✅ LOG DOS SCOPES SOLICITADOS
+            _logger.LogInformation("🔍 Scopes solicitados: {Scopes}", request.Scope ?? "NENHUM");
+
             // Buscar usuário por email/username
             var usuario = await _userManager.FindByEmailAsync(request.Username!) ??
                           await _userManager.FindByNameAsync(request.Username!);
@@ -83,7 +87,7 @@ public class TokenController : ControllerBase
             if (usuario == null)
             {
                 _logger.LogWarning("⚠️ Usuário não encontrado: {Username}", request.Username);
-                
+
                 var properties = new AuthenticationProperties(new Dictionary<string, string?>
                 {
                     [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.InvalidGrant,
@@ -97,7 +101,7 @@ public class TokenController : ControllerBase
             if (!usuario.Ativo)
             {
                 _logger.LogWarning("⚠️ Usuário inativo: {Email}", usuario.Email);
-                
+
                 var properties = new AuthenticationProperties(new Dictionary<string, string?>
                 {
                     [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.InvalidGrant,
@@ -109,11 +113,11 @@ public class TokenController : ControllerBase
 
             // Verificar senha
             var resultado = await _signInManager.CheckPasswordSignInAsync(usuario, request.Password!, lockoutOnFailure: true);
-            
+
             if (resultado.IsLockedOut)
             {
                 _logger.LogWarning("⚠️ Usuário bloqueado: {Email}", usuario.Email);
-                
+
                 var properties = new AuthenticationProperties(new Dictionary<string, string?>
                 {
                     [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.InvalidGrant,
@@ -126,7 +130,7 @@ public class TokenController : ControllerBase
             if (!resultado.Succeeded)
             {
                 _logger.LogWarning("⚠️ Senha incorreta para: {Email}", usuario.Email);
-                
+
                 var properties = new AuthenticationProperties(new Dictionary<string, string?>
                 {
                     [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.InvalidGrant,
@@ -136,22 +140,42 @@ public class TokenController : ControllerBase
                 return Forbid(properties, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
             }
 
-            // ✅ USAR HORÁRIO REAL DO SISTEMA
-            usuario.UltimoLogin = DateTime.UtcNow;
+            // USAR HORÁRIO REAL DO SISTEMA
+            usuario.UltimoLogin = _timezoneService.GetCurrentUtc();
             await _userManager.UpdateAsync(usuario);
 
-            // Criar claims do usuário
+            // ✅ CRIAR IDENTIDADE COM SCOPES EXPLÍCITOS
             var identity = await CreateUserIdentityAsync(usuario);
 
-            _logger.LogInformation("✅ Token gerado com sucesso para: {Email}", usuario.Email);
+            // ✅ CONFIGURAR SCOPES EXPLICITAMENTE PARA GERAR REFRESH TOKEN
+            var scopes = request.Scope?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
 
-            // Retornar principal com claims
-            return SignIn(new ClaimsPrincipal(identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            // ✅ GARANTIR QUE offline_access ESTEJA PRESENTE
+            var scopesList = scopes.ToList();
+            if (!scopesList.Contains(OpenIddictConstants.Scopes.OfflineAccess))
+            {
+                scopesList.Add(OpenIddictConstants.Scopes.OfflineAccess);
+                _logger.LogInformation("🔧 Adicionando scope offline_access automaticamente");
+            }
+
+            // ✅ CONFIGURAR SCOPES NO PRINCIPAL
+            identity.SetScopes(scopesList.ToImmutableArray());
+
+            // ✅ LOG DOS SCOPES CONFIGURADOS
+            _logger.LogInformation("🔍 Scopes configurados no identity: {ConfiguredScopes}", string.Join(", ", scopesList));
+
+            _logger.LogInformation("✅ Token gerado com sucesso para: {Email} em {LocalTime}",
+                usuario.Email,
+                _timezoneService.FormatDateTimeWithTimezone(_timezoneService.GetCurrentLocal()));
+
+            // ✅ RETORNAR PRINCIPAL COM SCOPES CONFIGURADOS
+            var principal = new ClaimsPrincipal(identity);
+            return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro durante geração de token");
-            
+
             var properties = new AuthenticationProperties(new Dictionary<string, string?>
             {
                 [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.ServerError,
@@ -169,7 +193,7 @@ public class TokenController : ControllerBase
     {
         // Obter informações do refresh token
         var info = await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-        
+
         var userId = info?.Principal?.GetClaim(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out var userIdInt))
         {
@@ -209,7 +233,7 @@ public class TokenController : ControllerBase
     {
         // Para aplicações machine-to-machine
         var identity = new ClaimsIdentity(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-        
+
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Subject, request.ClientId!));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Name, "Sistema"));
 
@@ -226,30 +250,33 @@ public class TokenController : ControllerBase
             OpenIddictConstants.Claims.Name,
             OpenIddictConstants.Claims.Role);
 
-        // ✅ USAR HORÁRIO REAL DO SISTEMA
-        var currentUtc = DateTime.UtcNow;
-        var systemTimezone = TimeZoneInfo.Local.Id;
-        
-        _logger.LogInformation("🕐 Token criado em - UTC: {Utc}, Timezone: {Timezone}", 
-            currentUtc, systemTimezone);
+        // ✅ USAR TimezoneService para obter informações consistentes
+        var currentUtc = _timezoneService.GetCurrentUtc();
+        var currentLocal = _timezoneService.GetCurrentLocal();
+        var systemTimezone = _timezoneService.GetSystemTimezone();
+        var utcOffset = _timezoneService.GetUtcOffset();
 
-        // ✅ ADICIONAR AMBOS OS CLAIMS PARA COMPATIBILIDADE
+        _logger.LogInformation("🕐 Token criado - UTC: {Utc}, Local: {Local}, Timezone: {Timezone}, Offset: {Offset}",
+            _timezoneService.FormatDateTime(currentUtc),
+            _timezoneService.FormatDateTime(currentLocal),
+            systemTimezone,
+            utcOffset);
+
+        // Claims básicos
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Subject, usuario.Id.ToString()));
-        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString())); // ✅ ADICIONAR
-
+        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString()));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Name, usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}"));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.PreferredUsername, usuario.Email!));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.Email, usuario.Email!));
         identity.AddClaim(new Claim(OpenIddictConstants.Claims.EmailVerified, usuario.EmailConfirmed.ToString().ToLower()));
-
-        // Claims personalizados
         identity.AddClaim(new Claim("nome", usuario.Nome));
         identity.AddClaim(new Claim("sobrenome", usuario.Sobrenome));
-        identity.AddClaim(new Claim("ultimo_login", currentUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")));
+        identity.AddClaim(new Claim("ultimo_login", _timezoneService.ToIso8601String(currentUtc)));
+        identity.AddClaim(new Claim("ultimo_login_local", _timezoneService.FormatDateTimeWithTimezone(currentLocal)));
         identity.AddClaim(new Claim("timezone", systemTimezone));
-        
-        var offset = TimeZoneInfo.Local.GetUtcOffset(DateTime.Now);
-        identity.AddClaim(new Claim("utc_offset", offset.ToString(@"hh\:mm\:ss")));
+        identity.AddClaim(new Claim("timezone_display", _timezoneService.GetTimezoneDisplay()));
+        identity.AddClaim(new Claim("utc_offset", utcOffset.ToString(@"hh\:mm")));
+        identity.AddClaim(new Claim("utc_offset_seconds", utcOffset.TotalSeconds.ToString()));
 
         // Obter papéis do usuário
         var papeis = await _userManager.GetRolesAsync(usuario);
@@ -299,7 +326,7 @@ public class TokenController : ControllerBase
         if (usuario == null) return new List<string>();
 
         var papeis = await _userManager.GetRolesAsync(usuario);
-        
+
         // Buscar permissões através dos papéis do usuário
         var permissoes = await _roleManager.Roles
             .Where(r => papeis.Contains(r.Name!))
@@ -317,53 +344,43 @@ public class TokenController : ControllerBase
     /// </summary>
     private static IEnumerable<string> GetDestinations(Claim claim)
     {
-        // Note: by default, claims are NOT automatically included in the access and identity tokens.
-        // To allow OpenIddict to serialize them, you must attach them a destination, that specifies
-        // whether they should be included in access tokens, in identity tokens or in both.
-
         switch (claim.Type)
         {
             case OpenIddictConstants.Claims.Name:
                 yield return OpenIddictConstants.Destinations.AccessToken;
-
                 if (claim.Subject!.HasScope(OpenIddictConstants.Scopes.Profile))
                     yield return OpenIddictConstants.Destinations.IdentityToken;
-
                 yield break;
 
             case OpenIddictConstants.Claims.Email:
                 yield return OpenIddictConstants.Destinations.AccessToken;
-
                 if (claim.Subject!.HasScope(OpenIddictConstants.Scopes.Email))
                     yield return OpenIddictConstants.Destinations.IdentityToken;
-
                 yield break;
 
             case OpenIddictConstants.Claims.Role:
                 yield return OpenIddictConstants.Destinations.AccessToken;
-
                 if (claim.Subject!.HasScope(OpenIddictConstants.Scopes.Roles))
                     yield return OpenIddictConstants.Destinations.IdentityToken;
-
                 yield break;
 
-            // ✅ ADICIONAR: Audience sempre no access token
             case OpenIddictConstants.Claims.Audience:
                 yield return OpenIddictConstants.Destinations.AccessToken;
                 yield break;
 
-            // Claims personalizados sempre no access token
             case "nome":
             case "sobrenome":
             case "ultimo_login":
+            case "ultimo_login_local":
             case "permissao":
             case "timezone":
+            case "timezone_display":
             case "utc_offset":
+            case "utc_offset_seconds":
                 yield return OpenIddictConstants.Destinations.AccessToken;
                 yield break;
 
-            // Never include the security stamp in the access and identity tokens, as it's a secret value.
-            case "AspNet.Identity.SecurityStamp": 
+            case "AspNet.Identity.SecurityStamp":
                 yield break;
 
             default:

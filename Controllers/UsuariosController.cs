@@ -456,9 +456,9 @@ public class UsuariosController : ControllerBase
             var validationResult = await validator.ValidateAsync(request);
             if (!validationResult.IsValid)
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "Dados inválidos", 
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "Dados inválidos",
                     Mensagem = "Os dados fornecidos são inválidos",
                     Detalhes = validationResult.Errors.Select(e => e.ErrorMessage).ToList()
                 });
@@ -613,10 +613,10 @@ public class UsuariosController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, $"❌ Erro ao atualizar usuário: {id}");
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "Erro interno", 
-                Mensagem = "Erro ao atualizar usuário" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "Erro interno",
+                Mensagem = "Erro ao atualizar usuário"
             });
         }
     }
@@ -947,7 +947,8 @@ public class UsuariosController : ControllerBase
             // ✅ CAPTURAR DADOS ANTES DA OPERAÇÃO
             var papeisAntes = usuario.UsuarioPapeis
                 .Where(up => up.Ativo)
-                .Select(up => new {
+                .Select(up => new
+                {
                     Nome = up.Papel.Name,
                     Id = up.Papel.Id,
                     DataAtribuicao = up.DataAtribuicao,
@@ -1050,12 +1051,14 @@ public class UsuariosController : ControllerBase
                 // ✅ REGISTRAR AUDITORIA DETALHADA
                 await RegistrarAuditoria("Usuarios.GerenciarPapeis", "Usuarios", id.ToString(),
                     $"Papéis {request.Operacao.ToLower()}s para usuário: {usuario.Email}",
-                    new {
+                    new
+                    {
                         PapeisAntes = papeisAntes,
                         Operacao = request.Operacao,
                         PapeisOperacao = request.Papeis
                     },
-                    new {
+                    new
+                    {
                         PapeisDepois = papeisDepois.Select(p => new { p.Nome, p.Id, p.DataAtribuicao }),
                         Estatisticas = resposta.Estatisticas
                     });
@@ -1275,7 +1278,8 @@ public class UsuariosController : ControllerBase
             // ✅ REGISTRAR AUDITORIA DA BUSCA
             await RegistrarAuditoria("Usuarios.Buscar", "Usuarios", null,
                 $"Busca avançada executada: {totalEncontrados} resultados encontrados",
-                dadosDepois: new {
+                dadosDepois: new
+                {
                     TotalEncontrados = totalEncontrados,
                     TempoExecucao = tempoExecucao.TotalMilliseconds,
                     Criterios = request
@@ -1549,7 +1553,7 @@ public class UsuariosController : ControllerBase
             });
         }
     }
-    
+
     /// <summary>
     /// Obtém perfil do usuário logado
     /// </summary>
@@ -1562,20 +1566,39 @@ public class UsuariosController : ControllerBase
         try
         {
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            
+
+            _logger.LogInformation("📋 Obtendo perfil completo - Usuário: {UsuarioId}", usuarioLogadoId);
+
+            // ✅ BUSCAR USUÁRIO COM TODOS OS DADOS NECESSÁRIOS
             var usuario = await _context.Users
-                .Include(u => u.UsuarioPapeis.Where(up => up.Ativo))
-                    .ThenInclude(up => up.Papel)
-                .Include(u => u.UsuarioGrupos.Where(ug => ug.Ativo))
-                    .ThenInclude(ug => ug.Grupo)
+                .AsNoTracking() // Não precisamos trackear para leitura
                 .FirstOrDefaultAsync(u => u.Id == usuarioLogadoId);
 
             if (usuario == null)
             {
-                return NotFound(new RespostaErro { Erro = "UsuarioNaoEncontrado", Mensagem = "Usuário não encontrado" });
+                _logger.LogWarning("⚠️ Usuário não encontrado para obter perfil: {UsuarioId}", usuarioLogadoId);
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
+                });
             }
 
-            var perfil = new PerfilUsuario
+            // ✅ CONSTRUIR URL SEGURA PARA FOTO DE PERFIL
+            string? urlFotoPerfil = null;
+            if (!string.IsNullOrEmpty(usuario.CaminhoFotoPerfil))
+            {
+                // Gerar URL segura com timestamp e hash para a foto
+                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var hash = GerarHashSeguro(usuario.CaminhoFotoPerfil, timestamp);
+                urlFotoPerfil = $"/api/usuarios/perfil/imagem/{Uri.EscapeDataString(usuario.CaminhoFotoPerfil)}?t={timestamp}&h={hash}";
+            }
+
+            // ✅ CALCULAR PERCENTUAL DE COMPLETUDE DO PERFIL
+            var completudePerfil = CalcularCompletudePerfil(usuario);
+
+            // ✅ CONSTRUIR PERFIL COMPLETO
+            var perfilUsuario = new PerfilUsuario
             {
                 Id = usuario.Id,
                 Email = usuario.Email!,
@@ -1584,9 +1607,9 @@ public class UsuariosController : ControllerBase
                 NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
                 Telefone = usuario.PhoneNumber,
                 CaminhoFotoPerfil = usuario.CaminhoFotoPerfil,
-                UrlFotoPerfil = !string.IsNullOrEmpty(usuario.CaminhoFotoPerfil) 
-                    ? _arquivoService.GerarUrlSegura(usuario.CaminhoFotoPerfil) 
-                    : null,
+                UrlFotoPerfil = urlFotoPerfil,
+
+                // ✅ INFORMAÇÕES PESSOAIS COMPLETAS
                 Profissao = usuario.Profissao,
                 Departamento = usuario.Departamento,
                 Bio = usuario.Bio,
@@ -1596,8 +1619,12 @@ public class UsuariosController : ControllerBase
                 Estado = usuario.Estado,
                 Cep = usuario.Cep,
                 TelefoneAlternativo = usuario.TelefoneAlternativo,
+
+                // ✅ PREFERÊNCIAS DO USUÁRIO (INCLUINDO TIMEZONE)
                 PreferenciaIdioma = usuario.PreferenciaIdioma ?? "pt-BR",
                 PreferenciaTimezone = usuario.PreferenciaTimezone ?? "America/Sao_Paulo",
+
+                // ✅ CONFIGURAÇÕES DE PRIVACIDADE
                 Privacidade = new ConfiguracaoPrivacidade
                 {
                     ExibirEmail = usuario.ExibirEmail,
@@ -1606,23 +1633,41 @@ public class UsuariosController : ControllerBase
                     ExibirEndereco = usuario.ExibirEndereco,
                     PerfilPublico = usuario.PerfilPublico
                 },
+
+                // ✅ CONFIGURAÇÕES DE NOTIFICAÇÃO
                 Notificacoes = new ConfiguracaoNotificacao
                 {
                     NotificacaoEmail = usuario.NotificacaoEmail,
                     NotificacaoSms = usuario.NotificacaoSms,
                     NotificacaoPush = usuario.NotificacaoPush
                 },
+
+                // ✅ COMPLETUDE DO PERFIL
+                CompletudePerfil = completudePerfil,
+
+                // ✅ DATAS DO SISTEMA
                 DataCriacao = usuario.DataCriacao,
                 DataAtualizacao = usuario.DataAtualizacao,
                 UltimoLogin = usuario.UltimoLogin
             };
 
-            return Ok(perfil);
+            // ✅ REGISTRAR AUDITORIA (acesso ao próprio perfil)
+            await RegistrarAuditoria("Usuarios.VisualizarPerfil", "Usuarios", usuarioLogadoId.ToString(),
+                "Usuário visualizou próprio perfil");
+
+            _logger.LogInformation("✅ Perfil completo obtido - ID: {Id}, Email: {Email}, Timezone: {Timezone}, Completude: {Completude}%",
+                usuario.Id, usuario.Email, usuario.PreferenciaTimezone, completudePerfil.PercentualCompleto);
+
+            return Ok(perfilUsuario);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao obter perfil do usuário: {UsuarioId}", ObterUsuarioLogadoId());
-            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno ao obter perfil" });
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno ao obter perfil do usuário"
+            });
         }
     }
 
@@ -1639,157 +1684,229 @@ public class UsuariosController : ControllerBase
     {
         try
         {
-            var usuarioLogadoId = ObterUsuarioLogadoId();
-            
-            // Validar dados
             if (!ModelState.IsValid)
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "DadosInvalidos", 
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "DadosInvalidos",
                     Mensagem = "Dados fornecidos são inválidos",
-                    Detalhes = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()
+                    Detalhes = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList()
                 });
             }
 
-            var strategy = _context.Database.CreateExecutionStrategy();
-            var resultado = await strategy.ExecuteAsync(async () =>
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+
+            _logger.LogInformation("📝 Atualizando perfil - Usuário: {UsuarioId}", usuarioLogadoId);
+
+            // ✅ BUSCAR USUÁRIO EXISTENTE
+            var usuario = await _context.Users.FirstOrDefaultAsync(u => u.Id == usuarioLogadoId);
+
+            if (usuario == null)
             {
-                using var transaction = await _context.Database.BeginTransactionAsync();
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
+                });
+            }
+
+            // ✅ CAPTURAR DADOS ANTES DA ATUALIZAÇÃO (para auditoria)
+            var dadosAntes = new
+            {
+                Nome = usuario.Nome,
+                Sobrenome = usuario.Sobrenome,
+                Telefone = usuario.PhoneNumber,
+                Profissao = usuario.Profissao,
+                Departamento = usuario.Departamento,
+                Bio = usuario.Bio,
+                DataNascimento = usuario.DataNascimento,
+                EnderecoCompleto = usuario.EnderecoCompleto,
+                Cidade = usuario.Cidade,
+                Estado = usuario.Estado,
+                Cep = usuario.Cep,
+                TelefoneAlternativo = usuario.TelefoneAlternativo,
+                PreferenciaIdioma = usuario.PreferenciaIdioma,
+                PreferenciaTimezone = usuario.PreferenciaTimezone
+            };
+
+            // ✅ ATUALIZAR CAMPOS FORNECIDOS
+            if (!string.IsNullOrWhiteSpace(request.Nome))
+            {
+                usuario.Nome = request.Nome.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Sobrenome))
+            {
+                usuario.Sobrenome = request.Sobrenome.Trim();
+            }
+
+            // ✅ ATUALIZAR NOME COMPLETO AUTOMATICAMENTE
+            usuario.NomeCompleto = $"{usuario.Nome} {usuario.Sobrenome}";
+
+            if (request.Telefone != null)
+            {
+                usuario.PhoneNumber = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim();
+            }
+
+            if (request.Profissao != null)
+            {
+                usuario.Profissao = string.IsNullOrWhiteSpace(request.Profissao) ? null : request.Profissao.Trim();
+            }
+
+            if (request.Departamento != null)
+            {
+                usuario.Departamento = string.IsNullOrWhiteSpace(request.Departamento) ? null : request.Departamento.Trim();
+            }
+
+            if (request.Bio != null)
+            {
+                usuario.Bio = string.IsNullOrWhiteSpace(request.Bio) ? null : request.Bio.Trim();
+            }
+
+            if (request.DataNascimento.HasValue)
+            {
+                // ✅ VALIDAR DATA DE NASCIMENTO RAZOÁVEL
+                if (request.DataNascimento.Value < DateTime.Now.AddYears(-120) ||
+                    request.DataNascimento.Value > DateTime.Now)
+                {
+                    return BadRequest(new RespostaErro
+                    {
+                        Erro = "DataNascimentoInvalida",
+                        Mensagem = "Data de nascimento deve ser uma data válida no passado"
+                    });
+                }
+                usuario.DataNascimento = request.DataNascimento.Value;
+            }
+
+            if (request.EnderecoCompleto != null)
+            {
+                usuario.EnderecoCompleto = string.IsNullOrWhiteSpace(request.EnderecoCompleto) ? null : request.EnderecoCompleto.Trim();
+            }
+
+            if (request.Cidade != null)
+            {
+                usuario.Cidade = string.IsNullOrWhiteSpace(request.Cidade) ? null : request.Cidade.Trim();
+            }
+
+            if (request.Estado != null)
+            {
+                usuario.Estado = string.IsNullOrWhiteSpace(request.Estado) ? null : request.Estado.Trim().ToUpper();
+            }
+
+            if (request.Cep != null)
+            {
+                usuario.Cep = string.IsNullOrWhiteSpace(request.Cep) ? null : request.Cep.Trim();
+            }
+
+            if (request.TelefoneAlternativo != null)
+            {
+                usuario.TelefoneAlternativo = string.IsNullOrWhiteSpace(request.TelefoneAlternativo) ? null : request.TelefoneAlternativo.Trim();
+            }
+
+            if (request.PreferenciaIdioma != null)
+            {
+                // ✅ VALIDAR IDIOMAS SUPORTADOS
+                var idiomasSuportados = new[] { "pt-BR", "en-US", "es-ES" };
+                if (idiomasSuportados.Contains(request.PreferenciaIdioma))
+                {
+                    usuario.PreferenciaIdioma = request.PreferenciaIdioma;
+                }
+                else
+                {
+                    return BadRequest(new RespostaErro
+                    {
+                        Erro = "IdiomaInvalido",
+                        Mensagem = $"Idioma não suportado. Idiomas disponíveis: {string.Join(", ", idiomasSuportados)}"
+                    });
+                }
+            }
+
+            if (request.PreferenciaTimezone != null)
+            {
+                // ✅ VALIDAR TIMEZONE
                 try
                 {
-                    var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
-                    if (usuario == null)
-                    {
-                        throw new InvalidOperationException("Usuário não encontrado");
-                    }
-
-                    // Capturar dados antes da atualização
-                    var dadosAntes = JsonSerializer.Serialize(new
-                    {
-                        usuario.Nome,
-                        usuario.Sobrenome,
-                        usuario.PhoneNumber,
-                        usuario.Profissao,
-                        usuario.Departamento,
-                        usuario.Bio,
-                        usuario.DataNascimento,
-                        usuario.EnderecoCompleto,
-                        usuario.Cidade,
-                        usuario.Estado,
-                        usuario.Cep,
-                        usuario.TelefoneAlternativo,
-                        usuario.PreferenciaIdioma,
-                        usuario.PreferenciaTimezone
-                    });
-
-                    // Atualizar campos do perfil
-                    if (!string.IsNullOrEmpty(request.Nome))
-                        usuario.Nome = request.Nome;
-                    
-                    if (!string.IsNullOrEmpty(request.Sobrenome))
-                        usuario.Sobrenome = request.Sobrenome;
-                    
-                    if (!string.IsNullOrEmpty(request.Telefone))
-                        usuario.PhoneNumber = request.Telefone;
-                    
-                    if (!string.IsNullOrEmpty(request.Profissao))
-                        usuario.Profissao = request.Profissao;
-                    
-                    if (!string.IsNullOrEmpty(request.Departamento))
-                        usuario.Departamento = request.Departamento;
-                    
-                    if (!string.IsNullOrEmpty(request.Bio))
-                        usuario.Bio = request.Bio;
-                    
-                    if (request.DataNascimento.HasValue)
-                        usuario.DataNascimento = request.DataNascimento;
-                    
-                    if (!string.IsNullOrEmpty(request.EnderecoCompleto))
-                        usuario.EnderecoCompleto = request.EnderecoCompleto;
-                    
-                    if (!string.IsNullOrEmpty(request.Cidade))
-                        usuario.Cidade = request.Cidade;
-                    
-                    if (!string.IsNullOrEmpty(request.Estado))
-                        usuario.Estado = request.Estado;
-                    
-                    if (!string.IsNullOrEmpty(request.Cep))
-                        usuario.Cep = request.Cep;
-                    
-                    if (!string.IsNullOrEmpty(request.TelefoneAlternativo))
-                        usuario.TelefoneAlternativo = request.TelefoneAlternativo;
-                    
-                    if (!string.IsNullOrEmpty(request.PreferenciaIdioma))
-                        usuario.PreferenciaIdioma = request.PreferenciaIdioma;
-                    
-                    if (!string.IsNullOrEmpty(request.PreferenciaTimezone))
-                        usuario.PreferenciaTimezone = request.PreferenciaTimezone;
-
-                    // Atualizar nome completo
-                    usuario.NomeCompleto = $"{usuario.Nome} {usuario.Sobrenome}";
-                    usuario.DataAtualizacao = DateTime.UtcNow;
-
-                    // Salvar alterações
-                    _context.Users.Update(usuario);
-                    await _context.SaveChangesAsync();
-
-                    // Registrar auditoria
-                    var dadosDepois = JsonSerializer.Serialize(new
-                    {
-                        usuario.Nome,
-                        usuario.Sobrenome,
-                        usuario.PhoneNumber,
-                        usuario.Profissao,
-                        usuario.Departamento,
-                        usuario.Bio,
-                        usuario.DataNascimento,
-                        usuario.EnderecoCompleto,
-                        usuario.Cidade,
-                        usuario.Estado,
-                        usuario.Cep,
-                        usuario.TelefoneAlternativo,
-                        usuario.PreferenciaIdioma,
-                        usuario.PreferenciaTimezone
-                    });
-
-                    var registroAuditoria = new RegistroAuditoria
-                    {
-                        UsuarioId = usuarioLogadoId,
-                        Acao = "Perfil.Atualizar",
-                        Recurso = "Usuario",
-                        RecursoId = usuario.Id.ToString(),
-                        DadosAntes = dadosAntes,
-                        DadosDepois = dadosDepois,
-                        DataHora = DateTime.UtcNow,
-                        EnderecoIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                        UserAgent = Request.Headers.UserAgent.ToString(),
-                        Observacoes = "Perfil atualizado pelo próprio usuário"
-                    };
-
-                    _context.RegistrosAuditoria.Add(registroAuditoria);
-                    await _context.SaveChangesAsync();
-
-                    await transaction.CommitAsync();
-
-                    return usuario;
+                    TimeZoneInfo.FindSystemTimeZoneById(request.PreferenciaTimezone);
+                    usuario.PreferenciaTimezone = request.PreferenciaTimezone;
                 }
-                catch
+                catch (TimeZoneNotFoundException)
                 {
-                    await transaction.RollbackAsync();
-                    throw;
+                    // ✅ TENTAR VALIDAÇÃO ALTERNATIVA PARA TIMEZONES IANA
+                    try
+                    {
+                        var testDate = new DateTime(2023, 1, 1);
+                        testDate.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+
+                        // Se chegou até aqui, timezone é válido
+                        usuario.PreferenciaTimezone = request.PreferenciaTimezone;
+                    }
+                    catch
+                    {
+                        return BadRequest(new RespostaErro
+                        {
+                            Erro = "TimezoneInvalido",
+                            Mensagem = "Fuso horário inválido ou não suportado"
+                        });
+                    }
                 }
-            });
+            }
 
-            _logger.LogInformation("✅ Perfil atualizado com sucesso - Usuário: {Id}", usuarioLogadoId);
+            // ✅ ATUALIZAR TIMESTAMP DE MODIFICAÇÃO
+            usuario.DataAtualizacao = DateTime.UtcNow;
 
-            // Retornar perfil atualizado
+            // ✅ SALVAR ALTERAÇÕES
+            var resultado = await _userManager.UpdateAsync(usuario);
+
+            if (!resultado.Succeeded)
+            {
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "ErroAtualizacao",
+                    Mensagem = "Erro ao atualizar perfil",
+                    Detalhes = resultado.Errors.Select(e => e.Description).ToList()
+                });
+            }
+
+            // ✅ CAPTURAR DADOS APÓS ATUALIZAÇÃO
+            var dadosDepois = new
+            {
+                Nome = usuario.Nome,
+                Sobrenome = usuario.Sobrenome,
+                Telefone = usuario.PhoneNumber,
+                Profissao = usuario.Profissao,
+                Departamento = usuario.Departamento,
+                Bio = usuario.Bio,
+                DataNascimento = usuario.DataNascimento,
+                EnderecoCompleto = usuario.EnderecoCompleto,
+                Cidade = usuario.Cidade,
+                Estado = usuario.Estado,
+                Cep = usuario.Cep,
+                TelefoneAlternativo = usuario.TelefoneAlternativo,
+                PreferenciaIdioma = usuario.PreferenciaIdioma,
+                PreferenciaTimezone = usuario.PreferenciaTimezone
+            };
+
+            // ✅ REGISTRAR AUDITORIA
+            await RegistrarAuditoria("Usuarios.AtualizarPerfil", "Usuarios", usuarioLogadoId.ToString(),
+                "Usuário atualizou próprio perfil", dadosAntes, dadosDepois);
+
+            _logger.LogInformation("✅ Perfil atualizado - ID: {Id}, Email: {Email}, Timezone: {Timezone}",
+                usuario.Id, usuario.Email, usuario.PreferenciaTimezone);
+
+            // ✅ RETORNAR PERFIL ATUALIZADO
             return await ObterMeuPerfil();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao atualizar perfil do usuário: {UsuarioId}", ObterUsuarioLogadoId());
-            return StatusCode(500, new RespostaErro { Erro = "ErroInterno", Mensagem = "Erro interno ao atualizar perfil" });
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno ao atualizar perfil"
+            });
         }
     }
 
@@ -1806,7 +1923,7 @@ public class UsuariosController : ControllerBase
         try
         {
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            
+
             var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
             if (usuario == null)
             {
@@ -1875,7 +1992,7 @@ public class UsuariosController : ControllerBase
         try
         {
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            
+
             var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
             if (usuario == null)
             {
@@ -1939,13 +2056,13 @@ public class UsuariosController : ControllerBase
         try
         {
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            
+
             if (!_arquivoService.ValidarImagemPerfil(arquivo))
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "ArquivoInvalido", 
-                    Mensagem = "Arquivo de imagem inválido. Aceitos: JPG, PNG, WEBP até 5MB" 
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "ArquivoInvalido",
+                    Mensagem = "Arquivo de imagem inválido. Aceitos: JPG, PNG, WEBP até 5MB"
                 });
             }
 
@@ -1963,7 +2080,7 @@ public class UsuariosController : ControllerBase
 
             // Salvar nova foto
             var caminhoArquivo = await _arquivoService.SalvarImagemPerfilAsync(arquivo, usuarioLogadoId);
-            
+
             // Atualizar usuário
             usuario.CaminhoFotoPerfil = caminhoArquivo;
             usuario.DataAtualizacao = DateTime.UtcNow;
@@ -1979,7 +2096,7 @@ public class UsuariosController : ControllerBase
 
             var urlSegura = _arquivoService.GerarUrlSegura(caminhoArquivo);
 
-            _logger.LogInformation("✅ Foto de perfil atualizada - Usuário: {Id}, Arquivo: {Caminho}", 
+            _logger.LogInformation("✅ Foto de perfil atualizada - Usuário: {Id}, Arquivo: {Caminho}",
                 usuarioLogadoId, caminhoArquivo);
 
             return Ok(new
@@ -2009,7 +2126,7 @@ public class UsuariosController : ControllerBase
         try
         {
             var usuarioLogadoId = ObterUsuarioLogadoId();
-            
+
             var usuario = await _userManager.FindByIdAsync(usuarioLogadoId.ToString());
             if (usuario == null)
             {
@@ -2039,7 +2156,7 @@ public class UsuariosController : ControllerBase
                 new { FotoRemovida = caminhoAnterior },
                 new { FotoAtual = (string?)null });
 
-            _logger.LogInformation("✅ Foto de perfil removida - Usuário: {Id}, Arquivo: {Caminho}", 
+            _logger.LogInformation("✅ Foto de perfil removida - Usuário: {Id}, Arquivo: {Caminho}",
                 usuarioLogadoId, caminhoAnterior);
 
             return Ok(new RespostaSucesso
@@ -2071,7 +2188,7 @@ public class UsuariosController : ControllerBase
             // Validar token de segurança (implementação básica)
             var agora = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var diferenca = Math.Abs(agora - t);
-            
+
             // Token válido por 1 hora
             if (diferenca > 3600)
             {
@@ -2079,7 +2196,7 @@ public class UsuariosController : ControllerBase
             }
 
             var bytesImagem = await _arquivoService.ObterImagemPerfilAsync(caminhoArquivo);
-            
+
             return File(bytesImagem, "image/jpeg");
         }
         catch (FileNotFoundException)
@@ -2109,20 +2226,20 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.Visualizar") && !EhProprioUsuario(id))
             {
-                return StatusCode(403, new RespostaErro 
-                { 
-                    Erro = "AcessoNegado", 
-                    Mensagem = "Usuário não tem permissão para visualizar aplicações deste usuário" 
+                return StatusCode(403, new RespostaErro
+                {
+                    Erro = "AcessoNegado",
+                    Mensagem = "Usuário não tem permissão para visualizar aplicações deste usuário"
                 });
             }
 
             var usuario = await _userManager.FindByIdAsync(id.ToString());
             if (usuario == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "UsuarioNaoEncontrado", 
-                    Mensagem = "Usuário não encontrado" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
                 });
             }
 
@@ -2162,7 +2279,7 @@ public class UsuariosController : ControllerBase
                 TemPaginaAnterior = filtros.Pagina > 1
             };
 
-            await RegistrarAuditoria("Visualizar", "UsuarioAplicacoes", id.ToString(), 
+            await RegistrarAuditoria("Visualizar", "UsuarioAplicacoes", id.ToString(),
                 $"Listagem de aplicações do usuário '{usuario.Email}'");
 
             return Ok(resposta);
@@ -2170,10 +2287,10 @@ public class UsuariosController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao listar aplicações do usuário {Id}", id);
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "ErroInterno", 
-                Mensagem = "Erro interno do servidor" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }
@@ -2195,10 +2312,10 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.GerenciarAplicacoes"))
             {
-                return StatusCode(403, new RespostaErro 
-                { 
-                    Erro = "AcessoNegado", 
-                    Mensagem = "Usuário não tem permissão para gerenciar aplicações de usuários" 
+                return StatusCode(403, new RespostaErro
+                {
+                    Erro = "AcessoNegado",
+                    Mensagem = "Usuário não tem permissão para gerenciar aplicações de usuários"
                 });
             }
 
@@ -2210,10 +2327,10 @@ public class UsuariosController : ControllerBase
             var usuario = await _userManager.FindByIdAsync(id.ToString());
             if (usuario == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "UsuarioNaoEncontrado", 
-                    Mensagem = "Usuário não encontrado" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
                 });
             }
 
@@ -2222,10 +2339,10 @@ public class UsuariosController : ControllerBase
 
             if (!resultadoOperacao.Sucesso)
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "ErroOperacao", 
-                    Mensagem = resultadoOperacao.Mensagem 
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "ErroOperacao",
+                    Mensagem = resultadoOperacao.Mensagem
                 });
             }
 
@@ -2263,8 +2380,8 @@ public class UsuariosController : ControllerBase
                 Erros = resultadoOperacao.Erros
             };
 
-            await RegistrarAuditoria("GerenciarAplicacoes", "Usuario", id.ToString(), 
-                $"Operação '{request.Operacao}' em aplicações do usuário '{usuario.Email}'", 
+            await RegistrarAuditoria("GerenciarAplicacoes", "Usuario", id.ToString(),
+                $"Operação '{request.Operacao}' em aplicações do usuário '{usuario.Email}'",
                 null, request);
 
             // Enviar notificação se solicitado
@@ -2273,7 +2390,7 @@ public class UsuariosController : ControllerBase
                 await EnviarNotificacaoAplicacoes(usuario, request.Operacao ?? string.Empty, resultadoOperacao);
             }
 
-            _logger.LogInformation("✅ Aplicações gerenciadas - Usuário: {Id}, Operação: {Operacao}, Admin: {AdminId}", 
+            _logger.LogInformation("✅ Aplicações gerenciadas - Usuário: {Id}, Operação: {Operacao}, Admin: {AdminId}",
                 id, request.Operacao, usuarioLogadoId);
 
             return Ok(resposta);
@@ -2281,10 +2398,10 @@ public class UsuariosController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao gerenciar aplicações do usuário {Id}", id);
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "ErroInterno", 
-                Mensagem = "Erro interno do servidor" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }
@@ -2307,10 +2424,10 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.AprovarAplicacoes"))
             {
-                return StatusCode(403, new RespostaErro 
-                { 
-                    Erro = "AcessoNegado", 
-                    Mensagem = "Usuário não tem permissão para aprovar acesso a aplicações" 
+                return StatusCode(403, new RespostaErro
+                {
+                    Erro = "AcessoNegado",
+                    Mensagem = "Usuário não tem permissão para aprovar acesso a aplicações"
                 });
             }
 
@@ -2322,10 +2439,10 @@ public class UsuariosController : ControllerBase
             var usuario = await _userManager.FindByIdAsync(id.ToString());
             if (usuario == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "UsuarioNaoEncontrado", 
-                    Mensagem = "Usuário não encontrado" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
                 });
             }
 
@@ -2338,10 +2455,10 @@ public class UsuariosController : ControllerBase
 
             if (usuarioAplicacao == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "SolicitacaoNaoEncontrada", 
-                    Mensagem = "Solicitação de acesso não encontrada" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "SolicitacaoNaoEncontrada",
+                    Mensagem = "Solicitação de acesso não encontrada"
                 });
             }
 
@@ -2350,10 +2467,10 @@ public class UsuariosController : ControllerBase
 
             if (!resultadoAprovacao.Sucesso)
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "ErroAprovacao", 
-                    Mensagem = resultadoAprovacao.Mensagem 
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "ErroAprovacao",
+                    Mensagem = resultadoAprovacao.Mensagem
                 });
             }
 
@@ -2379,8 +2496,8 @@ public class UsuariosController : ControllerBase
                 ProximaAcaoNecessaria = ObterProximaAcao(request.Decisao, usuarioAplicacao)
             };
 
-            await RegistrarAuditoria("AprovarAcesso", "UsuarioAplicacao", $"{id}-{aplicacaoId}", 
-                $"Decisão '{request.Decisao}' para acesso do usuário '{usuario.Email}' à aplicação '{usuarioAplicacao.Aplicacao.Nome}'", 
+            await RegistrarAuditoria("AprovarAcesso", "UsuarioAplicacao", $"{id}-{aplicacaoId}",
+                $"Decisão '{request.Decisao}' para acesso do usuário '{usuario.Email}' à aplicação '{usuarioAplicacao.Aplicacao.Nome}'",
                 null, request);
 
             // Enviar notificação se solicitado
@@ -2389,7 +2506,7 @@ public class UsuariosController : ControllerBase
                 await EnviarNotificacaoAprovacao(usuario, usuarioAplicacao.Aplicacao, request);
             }
 
-            _logger.LogInformation("✅ Acesso aprovado - Usuário: {UserId}, Aplicação: {AplicacaoId}, Decisão: {Decisao}, Aprovador: {AprovadorId}", 
+            _logger.LogInformation("✅ Acesso aprovado - Usuário: {UserId}, Aplicação: {AplicacaoId}, Decisão: {Decisao}, Aprovador: {AprovadorId}",
                 id, aplicacaoId, request.Decisao, usuarioLogadoId);
 
             return Ok(resposta);
@@ -2397,10 +2514,10 @@ public class UsuariosController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao aprovar acesso do usuário {UserId} à aplicação {AplicacaoId}", id, aplicacaoId);
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "ErroInterno", 
-                Mensagem = "Erro interno do servidor" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }
@@ -2422,20 +2539,20 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.GerenciarAplicacoes"))
             {
-                return StatusCode(403, new RespostaErro 
-                { 
-                    Erro = "AcessoNegado", 
-                    Mensagem = "Usuário não tem permissão para remover acesso a aplicações" 
+                return StatusCode(403, new RespostaErro
+                {
+                    Erro = "AcessoNegado",
+                    Mensagem = "Usuário não tem permissão para remover acesso a aplicações"
                 });
             }
 
             var usuario = await _userManager.FindByIdAsync(id.ToString());
             if (usuario == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "UsuarioNaoEncontrado", 
-                    Mensagem = "Usuário não encontrado" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
                 });
             }
 
@@ -2445,10 +2562,10 @@ public class UsuariosController : ControllerBase
 
             if (usuarioAplicacao == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "AcessoNaoEncontrado", 
-                    Mensagem = "Usuário não possui acesso a esta aplicação" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "AcessoNaoEncontrado",
+                    Mensagem = "Usuário não possui acesso a esta aplicação"
                 });
             }
 
@@ -2458,25 +2575,25 @@ public class UsuariosController : ControllerBase
             _context.UsuariosAplicacao.Remove(usuarioAplicacao);
             await _context.SaveChangesAsync();
 
-            await RegistrarAuditoria("RemoverAcesso", "UsuarioAplicacao", $"{id}-{aplicacaoId}", 
-                $"Acesso removido do usuário '{usuario.Email}' à aplicação '{nomeAplicacao}'. Motivo: {motivo ?? "Não informado"}", 
+            await RegistrarAuditoria("RemoverAcesso", "UsuarioAplicacao", $"{id}-{aplicacaoId}",
+                $"Acesso removido do usuário '{usuario.Email}' à aplicação '{nomeAplicacao}'. Motivo: {motivo ?? "Não informado"}",
                 usuarioAplicacao, null);
 
-            _logger.LogInformation("✅ Acesso removido - Usuário: {UserId}, Aplicação: {AplicacaoId}, Admin: {AdminId}", 
+            _logger.LogInformation("✅ Acesso removido - Usuário: {UserId}, Aplicação: {AplicacaoId}, Admin: {AdminId}",
                 id, aplicacaoId, ObterUsuarioLogadoId());
 
-            return Ok(new RespostaSucesso 
-            { 
-                Mensagem = $"Acesso à aplicação '{nomeAplicacao}' removido com sucesso" 
+            return Ok(new RespostaSucesso
+            {
+                Mensagem = $"Acesso à aplicação '{nomeAplicacao}' removido com sucesso"
             });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao remover acesso do usuário {UserId} à aplicação {AplicacaoId}", id, aplicacaoId);
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "ErroInterno", 
-                Mensagem = "Erro interno do servidor" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }
@@ -2497,20 +2614,20 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.Visualizar") && !EhProprioUsuario(id))
             {
-                return StatusCode(403, new RespostaErro 
-                { 
-                    Erro = "AcessoNegado", 
-                    Mensagem = "Usuário não tem permissão para visualizar aplicações disponíveis" 
+                return StatusCode(403, new RespostaErro
+                {
+                    Erro = "AcessoNegado",
+                    Mensagem = "Usuário não tem permissão para visualizar aplicações disponíveis"
                 });
             }
 
             var usuario = await _userManager.FindByIdAsync(id.ToString());
             if (usuario == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "UsuarioNaoEncontrado", 
-                    Mensagem = "Usuário não encontrado" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
                 });
             }
 
@@ -2523,7 +2640,7 @@ public class UsuariosController : ControllerBase
             var query = _context.Aplicacoes
                 .Include(a => a.TipoAplicacao)
                 .Include(a => a.StatusAplicacao)
-                .Where(a => a.Ativa && 
+                .Where(a => a.Ativa &&
                            a.StatusAplicacao.VisivelParaUsuarios &&
                            !aplicacoesComAcesso.Contains(a.Id))
                 .AsQueryable();
@@ -2565,10 +2682,10 @@ public class UsuariosController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Erro ao listar aplicações disponíveis para usuário {Id}", id);
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "ErroInterno", 
-                Mensagem = "Erro interno do servidor" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }
@@ -2590,10 +2707,10 @@ public class UsuariosController : ControllerBase
         {
             if (!TemPermissao("Usuarios.SolicitarAplicacoes") && !EhProprioUsuario(id))
             {
-                return StatusCode(403, new RespostaErro 
-                { 
-                    Erro = "AcessoNegado", 
-                    Mensagem = "Usuário não tem permissão para solicitar acesso a aplicações" 
+                return StatusCode(403, new RespostaErro
+                {
+                    Erro = "AcessoNegado",
+                    Mensagem = "Usuário não tem permissão para solicitar acesso a aplicações"
                 });
             }
 
@@ -2605,10 +2722,10 @@ public class UsuariosController : ControllerBase
             var usuario = await _userManager.FindByIdAsync(id.ToString());
             if (usuario == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "UsuarioNaoEncontrado", 
-                    Mensagem = "Usuário não encontrado" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
                 });
             }
 
@@ -2619,10 +2736,10 @@ public class UsuariosController : ControllerBase
 
             if (aplicacao == null)
             {
-                return NotFound(new RespostaErro 
-                { 
-                    Erro = "AplicacaoNaoEncontrada", 
-                    Mensagem = "Aplicação não encontrada" 
+                return NotFound(new RespostaErro
+                {
+                    Erro = "AplicacaoNaoEncontrada",
+                    Mensagem = "Aplicação não encontrada"
                 });
             }
 
@@ -2632,32 +2749,32 @@ public class UsuariosController : ControllerBase
 
             if (jaTemAcesso)
             {
-                return BadRequest(new RespostaErro 
-                { 
-                    Erro = "AcessoJaExiste", 
-                    Mensagem = "Usuário já possui acesso a esta aplicação" 
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "AcessoJaExiste",
+                    Mensagem = "Usuário já possui acesso a esta aplicação"
                 });
             }
 
             var resultadoSolicitacao = await ProcessarSolicitacaoAcesso(usuario, aplicacao, request);
 
-            await RegistrarAuditoria("SolicitarAcesso", "UsuarioAplicacao", $"{id}-{request.AplicacaoId}", 
-                $"Usuário '{usuario.Email}' solicitou acesso à aplicação '{aplicacao.Nome}'", 
+            await RegistrarAuditoria("SolicitarAcesso", "UsuarioAplicacao", $"{id}-{request.AplicacaoId}",
+                $"Usuário '{usuario.Email}' solicitou acesso à aplicação '{aplicacao.Nome}'",
                 null, request);
 
-            _logger.LogInformation("✅ Solicitação de acesso criada - Usuário: {UserId}, Aplicação: {AplicacaoId}", 
+            _logger.LogInformation("✅ Solicitação de acesso criada - Usuário: {UserId}, Aplicação: {AplicacaoId}",
                 id, request.AplicacaoId);
 
             return Ok(resultadoSolicitacao);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao processar solicitação de acesso do usuário {UserId} à aplicação {AplicacaoId}", 
+            _logger.LogError(ex, "❌ Erro ao processar solicitação de acesso do usuário {UserId} à aplicação {AplicacaoId}",
                 id, request.AplicacaoId);
-            return StatusCode(500, new RespostaErro 
-            { 
-                Erro = "ErroInterno", 
-                Mensagem = "Erro interno do servidor" 
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno do servidor"
             });
         }
     }
@@ -2715,7 +2832,7 @@ public class UsuariosController : ControllerBase
             DataCriacao = usuario.DataCriacao,
             DataAtualizacao = usuario.DataAtualizacao,
             UltimoLogin = usuario.UltimoLogin,
-            
+
             // ✅ MAPEAR PAPÉIS
             Papeis = usuario.UsuarioPapeis
                 .Where(up => up.Ativo && up.Papel.Ativo)
@@ -2810,10 +2927,10 @@ public class UsuariosController : ControllerBase
     {
         // ✅ VERIFICAR CLAIMS DE PERMISSÃO NO TOKEN
         var permissoesClaims = User.FindAll("permissao").Select(c => c.Value);
-        
+
         // ✅ VERIFICAR SE TEM A PERMISSÃO ESPECÍFICA OU É SUPERADMIN
-        return permissoesClaims.Contains(permissao) || 
-               User.IsInRole("SuperAdmin") || 
+        return permissoesClaims.Contains(permissao) ||
+               User.IsInRole("SuperAdmin") ||
                permissoesClaims.Contains("*"); // Permissão universal
     }
 
@@ -2882,7 +2999,7 @@ public class UsuariosController : ControllerBase
     /// <summary>
     /// Registra uma ação na auditoria
     /// </summary>
-    private async Task RegistrarAuditoria(string acao, string recurso, string? recursoId, 
+    private async Task RegistrarAuditoria(string acao, string recurso, string? recursoId,
         string observacoes, object? dadosAntes = null, object? dadosDepois = null)
     {
         try
@@ -2908,7 +3025,7 @@ public class UsuariosController : ControllerBase
             _context.RegistrosAuditoria.Add(registro);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("📝 Auditoria registrada - {Acao} em {Recurso}:{RecursoId} por usuário {UsuarioId}", 
+            _logger.LogInformation("📝 Auditoria registrada - {Acao} em {Recurso}:{RecursoId} por usuário {UsuarioId}",
                 acao, recurso, recursoId ?? "N/A", usuarioId);
         }
         catch (Exception ex)
@@ -3263,7 +3380,7 @@ public class UsuariosController : ControllerBase
 
         // 6. Finalmente, excluir o usuário
         _context.Users.Remove(usuario);
-        
+
         // 7. Salvar todas as alterações
         await _context.SaveChangesAsync();
     }
@@ -4048,7 +4165,8 @@ public class UsuariosController : ControllerBase
             await RegistrarAuditoria("Usuarios.OperacaoLote", "Usuarios", null,
                 $"Operação em lote '{request.TipoOperacao}' concluída",
                 dadosAntes: request,
-                dadosDepois: new {
+                dadosDepois: new
+                {
                     TotalProcessados = resposta.TotalProcessados,
                     TotalSucessos = resposta.TotalSucessos,
                     TotalErros = resposta.TotalErros,
@@ -6024,29 +6142,29 @@ public class UsuariosController : ControllerBase
     {
         const string chars = "ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
         const string especiais = "!@#$%&*";
-        
+
         var random = new Random();
         var senha = new char[8];
-        
+
         // Garantir pelo menos uma maiúscula, uma minúscula, um número e um especial
         senha[0] = "ABCDEFGHJKLMNOPQRSTUVWXYZ"[random.Next(23)];
         senha[1] = "abcdefghijkmnopqrstuvwxyz"[random.Next(23)];
         senha[2] = "23456789"[random.Next(8)];
         senha[3] = especiais[random.Next(especiais.Length)];
-        
+
         // Preencher o resto aleatoriamente
         for (int i = 4; i < senha.Length; i++)
         {
             senha[i] = chars[random.Next(chars.Length)];
         }
-        
+
         // Embaralhar
         for (int i = senha.Length - 1; i > 0; i--)
         {
             int j = random.Next(i + 1);
             (senha[i], senha[j]) = (senha[j], senha[i]);
         }
-        
+
         return new string(senha);
     }
 
@@ -6356,97 +6474,24 @@ public class UsuariosController : ControllerBase
                     switch (op)
                     {
                         case "adicionar":
-                        {
-                            if (!appsSelecionadas.Any())
                             {
-                                erros.Add("Nenhuma aplicação informada para adicionar");
-                                break;
-                            }
-
-                            foreach (var app in appsSelecionadas)
-                            {
-                                var existente = atuais.FirstOrDefault(x => x.AplicacaoId == app.Id);
-                                if (existente != null)
+                                if (!appsSelecionadas.Any())
                                 {
-                                    alertas.Add($"Usuário já possui vínculo com a aplicação '{app.Nome}'");
-                                    continue;
+                                    erros.Add("Nenhuma aplicação informada para adicionar");
+                                    break;
                                 }
 
-                                var aprovarAgora = request.AprovarAutomaticamente || (!app.RequerAprovacao && app.StatusAplicacao.PermiteAcesso);
-                                var novo = new UsuarioAplicacao
+                                foreach (var app in appsSelecionadas)
                                 {
-                                    UsuarioId = usuario.Id,
-                                    AplicacaoId = app.Id,
-                                    Justificativa = request.Justificativa,
-                                    ConfiguracoesUsuario = request.ConfiguracoesUsuario,
-                                    Aprovado = aprovarAgora,
-                                    DataAprovacao = aprovarAgora ? DateTime.UtcNow : null,
-                                    AprovadoPorId = aprovarAgora ? usuarioLogadoId : null,
-                                    DataExpiracao = request.DataExpiracao,
-                                    Ativo = true
-                                };
+                                    var existente = atuais.FirstOrDefault(x => x.AplicacaoId == app.Id);
+                                    if (existente != null)
+                                    {
+                                        alertas.Add($"Usuário já possui vínculo com a aplicação '{app.Nome}'");
+                                        continue;
+                                    }
 
-                                _context.UsuariosAplicacao.Add(novo);
-                                adicionadas++;
-                            }
-
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
-
-                        case "remover":
-                        {
-                            if (!appsSelecionadas.Any())
-                            {
-                                erros.Add("Nenhuma aplicação informada para remover");
-                                break;
-                            }
-
-                            foreach (var app in appsSelecionadas)
-                            {
-                                var existente = await _context.UsuariosAplicacao
-                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
-                                if (existente == null)
-                                {
-                                    alertas.Add($"Usuário não possui a aplicação '{app.Nome}'");
-                                    continue;
-                                }
-
-                                _context.UsuariosAplicacao.Remove(existente);
-                                removidas++;
-                            }
-
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
-
-                        case "substituir":
-                        {
-                            // Remove tudo que não está na lista e adiciona os que faltam
-                            var idsAlvo = request.AplicacoesIds?.ToHashSet() ?? new HashSet<int>();
-
-                            // Remover vínculos que não estão na nova lista
-                            var paraRemover = atuais.Where(ua => !idsAlvo.Contains(ua.AplicacaoId)).ToList();
-                            if (paraRemover.Any())
-                            {
-                                _context.UsuariosAplicacao.RemoveRange(paraRemover);
-                                removidas += paraRemover.Count;
-                            }
-
-                            // Adicionar vínculos que faltam
-                            var idsAtuais = atuais.Select(a => a.AplicacaoId).ToHashSet();
-                            var idsParaAdicionar = idsAlvo.Except(idsAtuais).ToList();
-                            if (idsParaAdicionar.Any())
-                            {
-                                var appsParaAdicionar = await _context.Aplicacoes
-                                    .Include(a => a.StatusAplicacao)
-                                    .Where(a => idsParaAdicionar.Contains(a.Id))
-                                    .ToListAsync();
-
-                                foreach (var app in appsParaAdicionar)
-                                {
                                     var aprovarAgora = request.AprovarAutomaticamente || (!app.RequerAprovacao && app.StatusAplicacao.PermiteAcesso);
-                                    _context.UsuariosAplicacao.Add(new UsuarioAplicacao
+                                    var novo = new UsuarioAplicacao
                                     {
                                         UsuarioId = usuario.Id,
                                         AplicacaoId = app.Id,
@@ -6457,140 +6502,213 @@ public class UsuariosController : ControllerBase
                                         AprovadoPorId = aprovarAgora ? usuarioLogadoId : null,
                                         DataExpiracao = request.DataExpiracao,
                                         Ativo = true
-                                    });
+                                    };
+
+                                    _context.UsuariosAplicacao.Add(novo);
                                     adicionadas++;
                                 }
+
+                                await _context.SaveChangesAsync();
+                                break;
                             }
 
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
+                        case "remover":
+                            {
+                                if (!appsSelecionadas.Any())
+                                {
+                                    erros.Add("Nenhuma aplicação informada para remover");
+                                    break;
+                                }
+
+                                foreach (var app in appsSelecionadas)
+                                {
+                                    var existente = await _context.UsuariosAplicacao
+                                        .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
+                                    if (existente == null)
+                                    {
+                                        alertas.Add($"Usuário não possui a aplicação '{app.Nome}'");
+                                        continue;
+                                    }
+
+                                    _context.UsuariosAplicacao.Remove(existente);
+                                    removidas++;
+                                }
+
+                                await _context.SaveChangesAsync();
+                                break;
+                            }
+
+                        case "substituir":
+                            {
+                                // Remove tudo que não está na lista e adiciona os que faltam
+                                var idsAlvo = request.AplicacoesIds?.ToHashSet() ?? new HashSet<int>();
+
+                                // Remover vínculos que não estão na nova lista
+                                var paraRemover = atuais.Where(ua => !idsAlvo.Contains(ua.AplicacaoId)).ToList();
+                                if (paraRemover.Any())
+                                {
+                                    _context.UsuariosAplicacao.RemoveRange(paraRemover);
+                                    removidas += paraRemover.Count;
+                                }
+
+                                // Adicionar vínculos que faltam
+                                var idsAtuais = atuais.Select(a => a.AplicacaoId).ToHashSet();
+                                var idsParaAdicionar = idsAlvo.Except(idsAtuais).ToList();
+                                if (idsParaAdicionar.Any())
+                                {
+                                    var appsParaAdicionar = await _context.Aplicacoes
+                                        .Include(a => a.StatusAplicacao)
+                                        .Where(a => idsParaAdicionar.Contains(a.Id))
+                                        .ToListAsync();
+
+                                    foreach (var app in appsParaAdicionar)
+                                    {
+                                        var aprovarAgora = request.AprovarAutomaticamente || (!app.RequerAprovacao && app.StatusAplicacao.PermiteAcesso);
+                                        _context.UsuariosAplicacao.Add(new UsuarioAplicacao
+                                        {
+                                            UsuarioId = usuario.Id,
+                                            AplicacaoId = app.Id,
+                                            Justificativa = request.Justificativa,
+                                            ConfiguracoesUsuario = request.ConfiguracoesUsuario,
+                                            Aprovado = aprovarAgora,
+                                            DataAprovacao = aprovarAgora ? DateTime.UtcNow : null,
+                                            AprovadoPorId = aprovarAgora ? usuarioLogadoId : null,
+                                            DataExpiracao = request.DataExpiracao,
+                                            Ativo = true
+                                        });
+                                        adicionadas++;
+                                    }
+                                }
+
+                                await _context.SaveChangesAsync();
+                                break;
+                            }
 
                         case "aprovar":
-                        {
-                            if (!appsSelecionadas.Any())
                             {
-                                erros.Add("Nenhuma aplicação informada para aprovar");
-                                break;
-                            }
-
-                            foreach (var app in appsSelecionadas)
-                            {
-                                var vinculo = await _context.UsuariosAplicacao
-                                    .Include(ua => ua.Aplicacao)
-                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
-
-                                if (vinculo == null)
+                                if (!appsSelecionadas.Any())
                                 {
-                                    alertas.Add($"Solicitação inexistente para a aplicação '{app.Nome}'");
-                                    continue;
+                                    erros.Add("Nenhuma aplicação informada para aprovar");
+                                    break;
                                 }
 
-                                vinculo.Aprovado = true;
-                                vinculo.Ativo = true;
-                                vinculo.DataAprovacao = DateTime.UtcNow;
-                                vinculo.AprovadoPorId = usuarioLogadoId;
-                                if (!string.IsNullOrWhiteSpace(request.Observacoes))
-                                    vinculo.ObservacoesAprovacao = request.Observacoes;
-                                if (request.DataExpiracao.HasValue)
-                                    vinculo.DataExpiracao = request.DataExpiracao;
-                                if (!string.IsNullOrWhiteSpace(request.ConfiguracoesUsuario))
-                                    vinculo.ConfiguracoesUsuario = request.ConfiguracoesUsuario;
+                                foreach (var app in appsSelecionadas)
+                                {
+                                    var vinculo = await _context.UsuariosAplicacao
+                                        .Include(ua => ua.Aplicacao)
+                                        .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
 
-                                aprovadas++;
+                                    if (vinculo == null)
+                                    {
+                                        alertas.Add($"Solicitação inexistente para a aplicação '{app.Nome}'");
+                                        continue;
+                                    }
+
+                                    vinculo.Aprovado = true;
+                                    vinculo.Ativo = true;
+                                    vinculo.DataAprovacao = DateTime.UtcNow;
+                                    vinculo.AprovadoPorId = usuarioLogadoId;
+                                    if (!string.IsNullOrWhiteSpace(request.Observacoes))
+                                        vinculo.ObservacoesAprovacao = request.Observacoes;
+                                    if (request.DataExpiracao.HasValue)
+                                        vinculo.DataExpiracao = request.DataExpiracao;
+                                    if (!string.IsNullOrWhiteSpace(request.ConfiguracoesUsuario))
+                                        vinculo.ConfiguracoesUsuario = request.ConfiguracoesUsuario;
+
+                                    aprovadas++;
+                                }
+
+                                await _context.SaveChangesAsync();
+                                break;
                             }
-
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
 
                         case "rejeitar":
-                        {
-                            if (!appsSelecionadas.Any())
                             {
-                                erros.Add("Nenhuma aplicação informada para rejeitar");
-                                break;
-                            }
-
-                            foreach (var app in appsSelecionadas)
-                            {
-                                var vinculo = await _context.UsuariosAplicacao
-                                    .Include(ua => ua.Aplicacao)
-                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
-
-                                if (vinculo == null)
+                                if (!appsSelecionadas.Any())
                                 {
-                                    alertas.Add($"Solicitação inexistente para a aplicação '{app.Nome}'");
-                                    continue;
+                                    erros.Add("Nenhuma aplicação informada para rejeitar");
+                                    break;
                                 }
 
-                                vinculo.Aprovado = false;
-                                vinculo.Ativo = false;
-                                vinculo.DataAprovacao = DateTime.UtcNow;
-                                vinculo.AprovadoPorId = usuarioLogadoId;
-                                vinculo.ObservacoesAprovacao = !string.IsNullOrWhiteSpace(request.Observacoes)
-                                    ? request.Observacoes
-                                    : "Acesso rejeitado";
-                                vinculo.DataExpiracao = null;
+                                foreach (var app in appsSelecionadas)
+                                {
+                                    var vinculo = await _context.UsuariosAplicacao
+                                        .Include(ua => ua.Aplicacao)
+                                        .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
 
-                                rejeitadas++;
+                                    if (vinculo == null)
+                                    {
+                                        alertas.Add($"Solicitação inexistente para a aplicação '{app.Nome}'");
+                                        continue;
+                                    }
+
+                                    vinculo.Aprovado = false;
+                                    vinculo.Ativo = false;
+                                    vinculo.DataAprovacao = DateTime.UtcNow;
+                                    vinculo.AprovadoPorId = usuarioLogadoId;
+                                    vinculo.ObservacoesAprovacao = !string.IsNullOrWhiteSpace(request.Observacoes)
+                                        ? request.Observacoes
+                                        : "Acesso rejeitado";
+                                    vinculo.DataExpiracao = null;
+
+                                    rejeitadas++;
+                                }
+
+                                await _context.SaveChangesAsync();
+                                break;
                             }
-
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
 
                         case "suspender":
-                        {
-                            if (!appsSelecionadas.Any())
                             {
-                                erros.Add("Nenhuma aplicação informada para suspender");
-                                break;
-                            }
-
-                            foreach (var app in appsSelecionadas)
-                            {
-                                var vinculo = await _context.UsuariosAplicacao
-                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
-
-                                if (vinculo == null)
+                                if (!appsSelecionadas.Any())
                                 {
-                                    alertas.Add($"Vínculo inexistente para a aplicação '{app.Nome}'");
-                                    continue;
+                                    erros.Add("Nenhuma aplicação informada para suspender");
+                                    break;
                                 }
 
-                                vinculo.Ativo = false;
-                            }
+                                foreach (var app in appsSelecionadas)
+                                {
+                                    var vinculo = await _context.UsuariosAplicacao
+                                        .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
 
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
+                                    if (vinculo == null)
+                                    {
+                                        alertas.Add($"Vínculo inexistente para a aplicação '{app.Nome}'");
+                                        continue;
+                                    }
+
+                                    vinculo.Ativo = false;
+                                }
+
+                                await _context.SaveChangesAsync();
+                                break;
+                            }
 
                         case "reativar":
-                        {
-                            if (!appsSelecionadas.Any())
                             {
-                                erros.Add("Nenhuma aplicação informada para reativar");
-                                break;
-                            }
-
-                            foreach (var app in appsSelecionadas)
-                            {
-                                var vinculo = await _context.UsuariosAplicacao
-                                    .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
-
-                                if (vinculo == null)
+                                if (!appsSelecionadas.Any())
                                 {
-                                    alertas.Add($"Vínculo inexistente para a aplicação '{app.Nome}'");
-                                    continue;
+                                    erros.Add("Nenhuma aplicação informada para reativar");
+                                    break;
                                 }
 
-                                vinculo.Ativo = true;
-                            }
+                                foreach (var app in appsSelecionadas)
+                                {
+                                    var vinculo = await _context.UsuariosAplicacao
+                                        .FirstOrDefaultAsync(x => x.UsuarioId == usuario.Id && x.AplicacaoId == app.Id);
 
-                            await _context.SaveChangesAsync();
-                            break;
-                        }
+                                    if (vinculo == null)
+                                    {
+                                        alertas.Add($"Vínculo inexistente para a aplicação '{app.Nome}'");
+                                        continue;
+                                    }
+
+                                    vinculo.Ativo = true;
+                                }
+
+                                await _context.SaveChangesAsync();
+                                break;
+                            }
 
                         default:
                             throw new NotSupportedException($"Operação não suportada: {request.Operacao}");
@@ -6643,43 +6761,43 @@ public class UsuariosController : ControllerBase
             {
                 case "aprovar":
                 case "aprovar_temporario":
-                {
-                    usuarioAplicacao.Aprovado = true;
-                    usuarioAplicacao.Ativo = true;
-                    usuarioAplicacao.DataAprovacao = DateTime.UtcNow;
-                    usuarioAplicacao.AprovadoPorId = usuarioLogadoId;
-                    usuarioAplicacao.ObservacoesAprovacao = request.Observacoes;
-                    if (decisao == "aprovar_temporario")
                     {
-                        if (request.DuracaoTemporariaDias.HasValue)
-                            usuarioAplicacao.DataExpiracao = DateTime.UtcNow.AddDays(request.DuracaoTemporariaDias.Value);
+                        usuarioAplicacao.Aprovado = true;
+                        usuarioAplicacao.Ativo = true;
+                        usuarioAplicacao.DataAprovacao = DateTime.UtcNow;
+                        usuarioAplicacao.AprovadoPorId = usuarioLogadoId;
+                        usuarioAplicacao.ObservacoesAprovacao = request.Observacoes;
+                        if (decisao == "aprovar_temporario")
+                        {
+                            if (request.DuracaoTemporariaDias.HasValue)
+                                usuarioAplicacao.DataExpiracao = DateTime.UtcNow.AddDays(request.DuracaoTemporariaDias.Value);
+                            else if (request.DataExpiracao.HasValue)
+                                usuarioAplicacao.DataExpiracao = request.DataExpiracao;
+                        }
                         else if (request.DataExpiracao.HasValue)
+                        {
                             usuarioAplicacao.DataExpiracao = request.DataExpiracao;
-                    }
-                    else if (request.DataExpiracao.HasValue)
-                    {
-                        usuarioAplicacao.DataExpiracao = request.DataExpiracao;
-                    }
-                    if (!string.IsNullOrWhiteSpace(request.ConfiguracoesUsuario))
-                        usuarioAplicacao.ConfiguracoesUsuario = request.ConfiguracoesUsuario;
+                        }
+                        if (!string.IsNullOrWhiteSpace(request.ConfiguracoesUsuario))
+                            usuarioAplicacao.ConfiguracoesUsuario = request.ConfiguracoesUsuario;
 
-                    await _context.SaveChangesAsync();
-                    return new ResultadoOperacao { Sucesso = true, Mensagem = "Acesso aprovado com sucesso" };
-                }
+                        await _context.SaveChangesAsync();
+                        return new ResultadoOperacao { Sucesso = true, Mensagem = "Acesso aprovado com sucesso" };
+                    }
 
                 case "rejeitar":
-                {
-                    usuarioAplicacao.Aprovado = false;
-                    usuarioAplicacao.Ativo = false;
-                    usuarioAplicacao.DataAprovacao = DateTime.UtcNow;
-                    usuarioAplicacao.AprovadoPorId = usuarioLogadoId;
-                    usuarioAplicacao.ObservacoesAprovacao = string.IsNullOrWhiteSpace(request.Observacoes) ?
-                        "Solicitação rejeitada" : request.Observacoes;
-                    usuarioAplicacao.DataExpiracao = null;
+                    {
+                        usuarioAplicacao.Aprovado = false;
+                        usuarioAplicacao.Ativo = false;
+                        usuarioAplicacao.DataAprovacao = DateTime.UtcNow;
+                        usuarioAplicacao.AprovadoPorId = usuarioLogadoId;
+                        usuarioAplicacao.ObservacoesAprovacao = string.IsNullOrWhiteSpace(request.Observacoes) ?
+                            "Solicitação rejeitada" : request.Observacoes;
+                        usuarioAplicacao.DataExpiracao = null;
 
-                    await _context.SaveChangesAsync();
-                    return new ResultadoOperacao { Sucesso = true, Mensagem = "Acesso rejeitado com sucesso" };
-                }
+                        await _context.SaveChangesAsync();
+                        return new ResultadoOperacao { Sucesso = true, Mensagem = "Acesso rejeitado com sucesso" };
+                    }
 
                 default:
                     return new ResultadoOperacao { Sucesso = false, Mensagem = $"Decisão inválida: {request.Decisao}" };
@@ -6687,7 +6805,7 @@ public class UsuariosController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao processar aprovação de acesso (UsuarioId={UsuarioId}, AplicacaoId={AplicacaoId})", 
+            _logger.LogError(ex, "❌ Erro ao processar aprovação de acesso (UsuarioId={UsuarioId}, AplicacaoId={AplicacaoId})",
                 usuarioAplicacao.UsuarioId, usuarioAplicacao.AplicacaoId);
             return new ResultadoOperacao { Sucesso = false, Mensagem = "Erro interno ao processar aprovação" };
         }
@@ -6750,7 +6868,7 @@ public class UsuariosController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao processar solicitação de acesso (UsuarioId={UsuarioId}, AplicacaoId={AplicacaoId})", 
+            _logger.LogError(ex, "❌ Erro ao processar solicitação de acesso (UsuarioId={UsuarioId}, AplicacaoId={AplicacaoId})",
                 usuario.Id, aplicacao.Id);
             return new RespostaSolicitacaoAcesso
             {
@@ -6836,11 +6954,137 @@ public class UsuariosController : ControllerBase
         {
             "aprovar" => "Usuário pode acessar a aplicação",
             "rejeitar" => "Usuário pode solicitar novamente após revisar justificativa",
-            "aprovar_temporario" => usuarioAplicacao.DataExpiracao.HasValue 
-                ? $"Acesso válido até {usuarioAplicacao.DataExpiracao:dd/MM/yyyy}" 
+            "aprovar_temporario" => usuarioAplicacao.DataExpiracao.HasValue
+                ? $"Acesso válido até {usuarioAplicacao.DataExpiracao:dd/MM/yyyy}"
                 : "Acesso temporário concedido",
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Calcula o percentual de completude do perfil do usuário
+    /// </summary>
+    /// <param name="usuario">Usuário para calcular a completude</param>
+    /// <returns>Informações sobre completude do perfil</returns>
+    private CompletudePerfil CalcularCompletudePerfil(Usuario usuario)
+    {
+        var campos = new List<CampoCompletude>
+    {
+        // ✅ CAMPOS OBRIGATÓRIOS (peso maior)
+        new CampoCompletude("Nome", !string.IsNullOrWhiteSpace(usuario.Nome), true, 10),
+        new CampoCompletude("Sobrenome", !string.IsNullOrWhiteSpace(usuario.Sobrenome), true, 10),
+        new CampoCompletude("Email", !string.IsNullOrWhiteSpace(usuario.Email), true, 15),
+        
+        // ✅ CAMPOS IMPORTANTES (peso médio)
+        new CampoCompletude("Telefone", !string.IsNullOrWhiteSpace(usuario.PhoneNumber), false, 8),
+        new CampoCompletude("Foto de Perfil", !string.IsNullOrWhiteSpace(usuario.CaminhoFotoPerfil), false, 8),
+        new CampoCompletude("Data de Nascimento", usuario.DataNascimento.HasValue, false, 6),
+        new CampoCompletude("Profissão", !string.IsNullOrWhiteSpace(usuario.Profissao), false, 7),
+        new CampoCompletude("Departamento", !string.IsNullOrWhiteSpace(usuario.Departamento), false, 5),
+        
+        // ✅ CAMPOS OPCIONAIS (peso menor)
+        new CampoCompletude("Bio", !string.IsNullOrWhiteSpace(usuario.Bio), false, 4),
+        new CampoCompletude("Endereço", !string.IsNullOrWhiteSpace(usuario.EnderecoCompleto), false, 5),
+        new CampoCompletude("Cidade", !string.IsNullOrWhiteSpace(usuario.Cidade), false, 3),
+        new CampoCompletude("Estado", !string.IsNullOrWhiteSpace(usuario.Estado), false, 3),
+        new CampoCompletude("CEP", !string.IsNullOrWhiteSpace(usuario.Cep), false, 3),
+        new CampoCompletude("Telefone Alternativo", !string.IsNullOrWhiteSpace(usuario.TelefoneAlternativo), false, 3),
+        
+        // ✅ CAMPOS DE CONFIGURAÇÃO (peso baixo)
+        new CampoCompletude("Idioma", !string.IsNullOrWhiteSpace(usuario.PreferenciaIdioma), false, 2),
+        new CampoCompletude("Fuso Horário", !string.IsNullOrWhiteSpace(usuario.PreferenciaTimezone), false, 2)
+    };
+
+        // ✅ CALCULAR ESTATÍSTICAS
+        var camposPreenchidos = campos.Count(c => c.Preenchido);
+        var totalCampos = campos.Count;
+        var pesoTotalPreenchido = campos.Where(c => c.Preenchido).Sum(c => c.Peso);
+        var pesoTotalPossivel = campos.Sum(c => c.Peso);
+        var camposObrigatoriosPreenchidos = campos.Count(c => c.Obrigatorio && c.Preenchido);
+        var totalCamposObrigatorios = campos.Count(c => c.Obrigatorio);
+
+        // ✅ CALCULAR PERCENTUAL PONDERADO
+        var percentualCompleto = pesoTotalPossivel > 0
+            ? Math.Round((double)pesoTotalPreenchido / pesoTotalPossivel * 100, 1)
+            : 0;
+
+        // ✅ DETERMINAR NÍVEL DE COMPLETUDE
+        var nivelCompletude = percentualCompleto switch
+        {
+            >= 90 => "Excelente",
+            >= 75 => "Muito Bom",
+            >= 60 => "Bom",
+            >= 40 => "Regular",
+            >= 20 => "Básico",
+            _ => "Incompleto"
+        };
+
+        // ✅ DETERMINAR COR BASEADA NO PERCENTUAL
+        var cor = percentualCompleto switch
+        {
+            >= 90 => "#4caf50", // Verde
+            >= 75 => "#8bc34a", // Verde claro
+            >= 60 => "#ffc107", // Amarelo
+            >= 40 => "#ff9800", // Laranja
+            >= 20 => "#ff5722", // Laranja escuro
+            _ => "#f44336" // Vermelho
+        };
+
+        // ✅ GERAR SUGESTÕES DE MELHORIA
+        var sugestoes = new List<string>();
+        var camposVazios = campos.Where(c => !c.Preenchido).OrderByDescending(c => c.Peso).Take(3);
+
+        foreach (var campo in camposVazios)
+        {
+            var acao = campo.Obrigatorio ? "complete" : "adicione";
+            sugestoes.Add($"Para melhorar seu perfil, {acao} o campo '{campo.Nome}'");
+        }
+
+        // ✅ ADICIONAR SUGESTÕES ESPECÍFICAS
+        if (!usuario.EmailConfirmed)
+        {
+            sugestoes.Insert(0, "Confirme seu endereço de email para aumentar a confiabilidade");
+        }
+
+        if (!string.IsNullOrWhiteSpace(usuario.PhoneNumber) && !usuario.PhoneNumberConfirmed)
+        {
+            sugestoes.Insert(0, "Confirme seu número de telefone para melhorar a segurança");
+        }
+
+        return new CompletudePerfil
+        {
+            PercentualCompleto = percentualCompleto,
+            CamposPreenchidos = camposPreenchidos,
+            TotalCampos = totalCampos,
+            CamposObrigatoriosCompletos = camposObrigatoriosPreenchidos == totalCamposObrigatorios,
+            NivelCompletude = nivelCompletude,
+            Cor = cor,
+            Campos = campos,
+            Sugestoes = sugestoes,
+            ProximoPasso = sugestoes.FirstOrDefault() ?? "Seu perfil está completo!",
+            DataCalculado = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>
+    /// Gera hash seguro para URLs de imagem
+    /// </summary>
+    private string GerarHashSeguro(string caminhoArquivo, long timestamp)
+    {
+        try
+        {
+            // Usar uma chave secreta do appsettings ou variável de ambiente
+            var chaveSecreta = "pp@*EZ*q&PcvBw&TW}%>m7Za1Rxv3.H|a.%?)J9[<c_[9ysgYu:OzbciDTbVjA0EV]geGsZutbl*0<A6Rre^7cvE%d1Gt^srO@Ci=!XlbvTi%V$l*v%0E!FO37LlHG6(G4s/z2np6!a:8u-!an$Hanqiw>UD|WD)BKkb?(P?_EIq)f;Z]^x-^Ynw}hYPi.&cEn3T8=VRBoN]%ETGsbB1#YLNa3H,K1eqiK,]SezErHs&FsX7aYK5<n7kC6d|c0uI"; // ⚠️ Mover para configuração
+            var dadosParaHash = $"{caminhoArquivo}|{timestamp}|{chaveSecreta}";
+
+            using var sha256 = System.Security.Cryptography.SHA256.Create();
+            var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(dadosParaHash));
+            return Convert.ToBase64String(hashBytes)[..12]; // Primeiros 12 caracteres
+        }
+        catch
+        {
+            return "default";
+        }
     }
 
     #endregion

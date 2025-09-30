@@ -8,6 +8,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Gestus.Services;
 
 namespace Gestus.Controllers;
 
@@ -22,17 +23,20 @@ public class AutenticacaoController : ControllerBase
     private readonly UserManager<Usuario> _userManager;
     private readonly SignInManager<Usuario> _signInManager;
     private readonly RoleManager<Papel> _roleManager;
+    private readonly ITimezoneService _timezoneService;
     private readonly ILogger<AutenticacaoController> _logger;
 
     public AutenticacaoController(
         UserManager<Usuario> userManager,
         SignInManager<Usuario> signInManager,
         RoleManager<Papel> roleManager,
+        ITimezoneService timezoneService,
         ILogger<AutenticacaoController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _roleManager = roleManager;
+        _timezoneService = timezoneService;
         _logger = logger;
     }
 
@@ -64,11 +68,11 @@ public class AutenticacaoController : ControllerBase
 
             // ✅ USAR TOKENS REAIS: Redirecionar para endpoint OpenIddict
             using var httpClient = new HttpClient();
-            
+
             // Fazer requisição para nosso endpoint de token
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var tokenEndpoint = $"{baseUrl}/connect/token";
-            
+
             var tokenRequest = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("grant_type", "password"),
@@ -76,16 +80,16 @@ public class AutenticacaoController : ControllerBase
                 new KeyValuePair<string, string>("client_secret", "gestus_api_secret_2024"),
                 new KeyValuePair<string, string>("username", request.Email),
                 new KeyValuePair<string, string>("password", request.Senha),
-                new KeyValuePair<string, string>("scope", "openid profile email roles")
+                new KeyValuePair<string, string>("scope", "openid profile email roles offline_access")
             });
 
             var response = await httpClient.PostAsync(tokenEndpoint, tokenRequest);
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("⚠️ Erro no token endpoint: {Error}", errorContent);
-                
+
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "CredenciaisInvalidas",
@@ -95,24 +99,31 @@ public class AutenticacaoController : ControllerBase
 
             var tokenResponse = await response.Content.ReadAsStringAsync();
             var tokenData = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(tokenResponse);
-            
+
             var accessToken = tokenData.GetProperty("access_token").GetString()!;
             var expiresIn = tokenData.GetProperty("expires_in").GetInt32();
             var refreshToken = tokenData.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
 
-            // Buscar informações do usuário
+            // ✅ BUSCAR USUÁRIO APÓS LOGIN (dados atualizados)
             var usuario = await _userManager.FindByEmailAsync(request.Email);
             var papeis = await _userManager.GetRolesAsync(usuario!);
             var permissoes = await ObterPermissoesUsuario(usuario!.Id);
 
-            _logger.LogInformation("✅ Login realizado com sucesso para: {Email}", request.Email);
+            // ✅ CALCULAR EXPIRAÇÃO EM HORÁRIO LOCAL
+            var agora = _timezoneService.GetCurrentLocal();
+            var expiracao = agora.AddSeconds(expiresIn);
+
+            _logger.LogInformation("✅ Login realizado - Local: {Local}, Expiracao: {Expiracao}",
+                _timezoneService.FormatDateTimeWithTimezone(agora),
+                _timezoneService.FormatDateTimeWithTimezone(expiracao));
 
             return Ok(new RespostaLogin
             {
                 Sucesso = true,
                 Token = accessToken,
                 TipoToken = "Bearer",
-                ExpiracaoEm = DateTime.UtcNow.AddSeconds(expiresIn),
+                // ✅ USAR HORÁRIO LOCAL
+                ExpiracaoEm = expiracao,
                 RefreshToken = refreshToken ?? "",
                 Usuario = new InformacoesUsuario
                 {
@@ -121,9 +132,14 @@ public class AutenticacaoController : ControllerBase
                     Nome = usuario.Nome,
                     Sobrenome = usuario.Sobrenome,
                     NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
-                    UltimoLogin = usuario.UltimoLogin,
+                    // ✅ CONVERTER UTC DO BANCO PARA HORÁRIO LOCAL
+                    UltimoLogin = usuario.UltimoLogin.HasValue ?
+                        _timezoneService.ToLocal(usuario.UltimoLogin.Value) :
+                        null,
                     Papeis = papeis.ToList(),
-                    Permissoes = permissoes
+                    Permissoes = permissoes,
+                    // ✅ ADICIONAR INFORMAÇÕES DE TIMEZONE
+                    InformacoesTimezone = _timezoneService.GetTimezoneDebugInfo()
                 }
             });
         }
@@ -144,10 +160,10 @@ public class AutenticacaoController : ControllerBase
     /// <param name="request">Refresh token</param>
     /// <returns>Novo token de acesso</returns>
     [HttpPost("refresh")]
-    [ProducesResponseType(typeof(RespostaToken), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaLogin), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status401Unauthorized)]
-    public IActionResult Refresh([FromBody] SolicitacaoRefresh request)
+    public async Task<IActionResult> Refresh([FromBody] SolicitacaoRefresh request)
     {
         try
         {
@@ -162,13 +178,144 @@ public class AutenticacaoController : ControllerBase
                 });
             }
 
-            // TODO: Implementar validação do refresh token com OpenIddict
-            // Por enquanto, retornamos erro para implementar depois
-            
-            return Unauthorized(new RespostaErro
+            // ✅ USAR O MESMO PADRÃO DO LOGIN: Redirecionar para o TokenController
+            using var httpClient = new HttpClient();
+
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var tokenEndpoint = $"{baseUrl}/connect/token";
+
+            var tokenRequest = new FormUrlEncodedContent(new[]
             {
-                Erro = "RefreshTokenExpirado",
-                Mensagem = "Refresh token inválido ou expirado. Faça login novamente."
+            new KeyValuePair<string, string>("grant_type", "refresh_token"),
+            new KeyValuePair<string, string>("client_id", "gestus_api"),
+            new KeyValuePair<string, string>("client_secret", "gestus_api_secret_2024"),
+            new KeyValuePair<string, string>("refresh_token", request.RefreshToken)
+        });
+
+            var response = await httpClient.PostAsync(tokenEndpoint, tokenRequest);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("⚠️ Erro no refresh token: {Error}", errorContent);
+
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "RefreshTokenExpirado",
+                    Mensagem = "Refresh token inválido ou expirado. Faça login novamente."
+                });
+            }
+
+            var tokenResponse = await response.Content.ReadAsStringAsync();
+            _logger.LogInformation("🔍 Resposta do refresh token: {Response}", tokenResponse);
+
+            var tokenData = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(tokenResponse);
+
+            var accessToken = tokenData.GetProperty("access_token").GetString()!;
+            var expiresIn = tokenData.GetProperty("expires_in").GetInt32();
+            var newRefreshToken = tokenData.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : request.RefreshToken;
+
+            // ✅ CORREÇÃO PRINCIPAL: OBTER USER ID DO REFRESH TOKEN VALIDADO NO OPENIDDICT
+            // Em vez de tentar decodificar o JWT, vamos usar o endpoint de introspecção ou buscar pelos claims do contexto
+
+            // Fazer uma requisição de introspecção do refresh token para obter as informações
+            var introspectionEndpoint = $"{baseUrl}/connect/introspect";
+            var introspectionRequest = new FormUrlEncodedContent(new[]
+            {
+            new KeyValuePair<string, string>("token", request.RefreshToken),
+            new KeyValuePair<string, string>("token_type_hint", "refresh_token"),
+            new KeyValuePair<string, string>("client_id", "gestus_api"),
+            new KeyValuePair<string, string>("client_secret", "gestus_api_secret_2024")
+        });
+
+            var introspectionResponse = await httpClient.PostAsync(introspectionEndpoint, introspectionRequest);
+
+            if (!introspectionResponse.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("⚠️ Erro na introspecção do refresh token");
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "RefreshTokenInvalido",
+                    Mensagem = "Não foi possível validar o refresh token"
+                });
+            }
+
+            var introspectionResult = await introspectionResponse.Content.ReadAsStringAsync();
+            _logger.LogInformation("🔍 Resultado da introspecção: {Result}", introspectionResult);
+
+            var introspectionData = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(introspectionResult);
+
+            // Verificar se o token está ativo
+            if (!introspectionData.TryGetProperty("active", out var activeProperty) || !activeProperty.GetBoolean())
+            {
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "RefreshTokenExpirado",
+                    Mensagem = "Refresh token inválido ou expirado"
+                });
+            }
+
+            // Obter o subject (user ID) do refresh token
+            if (!introspectionData.TryGetProperty("sub", out var subProperty))
+            {
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "RefreshTokenInvalido",
+                    Mensagem = "Refresh token não contém ID de usuário"
+                });
+            }
+
+            var userId = subProperty.GetString();
+            if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out var userIdInt))
+            {
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "TokenInvalido",
+                    Mensagem = "Token renovado não contém ID de usuário válido"
+                });
+            }
+
+            // ✅ AGORA PODEMOS BUSCAR O USUÁRIO COM O ID CORRETO
+            var usuario = await _userManager.FindByIdAsync(userId);
+            if (usuario == null || !usuario.Ativo)
+            {
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "UsuarioInvalido",
+                    Mensagem = "Usuário não encontrado ou inativo"
+                });
+            }
+
+            var papeis = await _userManager.GetRolesAsync(usuario);
+            var permissoes = await ObterPermissoesUsuario(usuario.Id);
+
+            // ✅ CALCULAR NOVA EXPIRAÇÃO
+            var agora = _timezoneService.GetCurrentLocal();
+            var expiracao = agora.AddSeconds(expiresIn);
+
+            _logger.LogInformation("✅ Token renovado com sucesso para: {Email}", usuario.Email);
+
+            return Ok(new RespostaLogin
+            {
+                Sucesso = true,
+                Token = accessToken,
+                TipoToken = "Bearer",
+                ExpiracaoEm = expiracao,
+                RefreshToken = newRefreshToken ?? "",
+                Usuario = new InformacoesUsuario
+                {
+                    Id = usuario.Id,
+                    Email = usuario.Email!,
+                    Nome = usuario.Nome,
+                    Sobrenome = usuario.Sobrenome,
+                    NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
+                    UltimoLogin = usuario.UltimoLogin.HasValue ?
+                        _timezoneService.ToLocal(usuario.UltimoLogin.Value) :
+                        null,
+                    Papeis = papeis.ToList(),
+                    Permissoes = permissoes,
+                    InformacoesTimezone = _timezoneService.GetTimezoneDebugInfo()
+                }
             });
         }
         catch (Exception ex)
@@ -224,16 +371,11 @@ public class AutenticacaoController : ControllerBase
     {
         try
         {
-            // ✅ CORRIGIR: OpenIddict usa claim "sub" para subject (user ID)
-            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ?? 
-                        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-                        User.FindFirstValue("sub");
-
-            _logger.LogInformation("🔍 Obtendo perfil para usuário: {UserId}", userId);
+            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ??
+                        User.FindFirstValue(ClaimTypes.NameIdentifier);
 
             if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out var userIdInt))
             {
-                _logger.LogWarning("⚠️ UserId inválido no token");
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "TokenInvalido",
@@ -244,7 +386,6 @@ public class AutenticacaoController : ControllerBase
             var usuario = await _userManager.FindByIdAsync(userId);
             if (usuario == null || !usuario.Ativo)
             {
-                _logger.LogWarning("⚠️ Usuário não encontrado ou inativo: {UserId}", userId);
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "UsuarioInvalido",
@@ -255,8 +396,6 @@ public class AutenticacaoController : ControllerBase
             var papeis = await _userManager.GetRolesAsync(usuario);
             var permissoes = await ObterPermissoesUsuario(usuario.Id);
 
-            _logger.LogInformation("✅ Perfil obtido com sucesso para: {Email}", usuario.Email);
-
             return Ok(new InformacoesUsuario
             {
                 Id = usuario.Id,
@@ -264,9 +403,14 @@ public class AutenticacaoController : ControllerBase
                 Nome = usuario.Nome,
                 Sobrenome = usuario.Sobrenome,
                 NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
-                UltimoLogin = usuario.UltimoLogin,
+                // ✅ CONVERTER UTC PARA LOCAL
+                UltimoLogin = usuario.UltimoLogin.HasValue ?
+                    _timezoneService.ToLocal(usuario.UltimoLogin.Value) :
+                    null,
                 Papeis = papeis.ToList(),
-                Permissoes = permissoes
+                Permissoes = permissoes,
+                // ✅ ADICIONAR INFORMAÇÕES DE TIMEZONE
+                InformacoesTimezone = _timezoneService.GetTimezoneDebugInfo()
             });
         }
         catch (Exception ex)
@@ -293,17 +437,17 @@ public class AutenticacaoController : ControllerBase
         try
         {
             // ✅ CORRIGIR: OpenIddict usa claim "sub" para subject (user ID)
-            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ?? 
+            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ??
                         User.FindFirstValue(ClaimTypes.NameIdentifier) ??
                         User.FindFirstValue("sub");
-            
-            var email = User.FindFirstValue(OpenIddictConstants.Claims.Email) ?? 
+
+            var email = User.FindFirstValue(OpenIddictConstants.Claims.Email) ??
                        User.FindFirstValue(ClaimTypes.Email);
-            
-            var name = User.FindFirstValue(OpenIddictConstants.Claims.Name) ?? 
+
+            var name = User.FindFirstValue(OpenIddictConstants.Claims.Name) ??
                       User.FindFirstValue(ClaimTypes.Name);
 
-            _logger.LogInformation("🔍 Claims do token - UserId: {UserId}, Email: {Email}, Name: {Name}", 
+            _logger.LogInformation("🔍 Claims do token - UserId: {UserId}, Email: {Email}, Name: {Name}",
                 userId, email, name);
 
             // ✅ LOG TODOS OS CLAIMS para debug
@@ -384,7 +528,7 @@ public class AutenticacaoController : ControllerBase
         if (usuario == null) return new List<string>();
 
         var papeis = await _userManager.GetRolesAsync(usuario);
-        
+
         // Buscar permissões através dos papéis do usuário
         var permissoes = await _roleManager.Roles
             .Where(r => papeis.Contains(r.Name!))
@@ -403,9 +547,9 @@ public class AutenticacaoController : ControllerBase
     private DateTime? GetTokenExpiration()
     {
         // ✅ TENTAR DIFERENTES CLAIMS DE EXPIRAÇÃO
-        var exp = User.FindFirstValue("exp") ?? 
+        var exp = User.FindFirstValue("exp") ??
                   User.FindFirstValue(OpenIddictConstants.Claims.ExpiresAt);
-        
+
         if (long.TryParse(exp, out var expUnix))
         {
             return DateTimeOffset.FromUnixTimeSeconds(expUnix).DateTime;
@@ -561,6 +705,7 @@ public class InformacoesUsuario
     /// Lista de permissões do usuário
     /// </summary>
     public List<string> Permissoes { get; set; } = new();
+    public object? InformacoesTimezone { get; set; }
 }
 
 /// <summary>
@@ -597,6 +742,7 @@ public class RespostaValidacaoToken
     /// Data/hora de expiração do token
     /// </summary>
     public DateTime? ExpiracaoEm { get; set; }
+    public object? TimezoneInfo { get; set; }
 }
 
 /// <summary>
