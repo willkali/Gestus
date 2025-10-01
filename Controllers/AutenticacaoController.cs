@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Gestus.Services;
+using Gestus.Dados;
 
 namespace Gestus.Controllers;
 
@@ -25,18 +26,24 @@ public class AutenticacaoController : ControllerBase
     private readonly RoleManager<Papel> _roleManager;
     private readonly ITimezoneService _timezoneService;
     private readonly ILogger<AutenticacaoController> _logger;
+    private readonly GestusDbContexto _context;
+    private readonly UsuarioLoginService _loginService;
 
     public AutenticacaoController(
         UserManager<Usuario> userManager,
         SignInManager<Usuario> signInManager,
         RoleManager<Papel> roleManager,
         ITimezoneService timezoneService,
+        GestusDbContexto context,
+        UsuarioLoginService loginService,
         ILogger<AutenticacaoController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _roleManager = roleManager;
         _timezoneService = timezoneService;
+        _context = context;
+        _loginService = loginService;
         _logger = logger;
     }
 
@@ -66,90 +73,252 @@ public class AutenticacaoController : ControllerBase
                 });
             }
 
-            // ✅ USAR TOKENS REAIS: Redirecionar para endpoint OpenIddict
-            using var httpClient = new HttpClient();
+            // ✅ PRIMEIRO: Verificar se o usuário existe ANTES da validação via OpenIddict
+            var usuarioExistente = await _userManager.FindByEmailAsync(request.Email);
 
-            // Fazer requisição para nosso endpoint de token
+            if (usuarioExistente == null)
+            {
+                _logger.LogWarning("❌ Tentativa de login com email inexistente: {Email}", request.Email);
+
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "EmailIncorreto",
+                    Mensagem = "Email não encontrado no sistema",
+                    Detalhes = new List<string>
+                {
+                    "Verifique se o email está digitado corretamente",
+                    "Certifique-se de usar o email cadastrado no sistema",
+                    "Entre em contato com o administrador se necessário"
+                }
+                });
+            }
+
+            // ✅ SEGUNDO: Fazer validação via OpenIddict para verificar senha
+            using var httpClient = new HttpClient();
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var tokenEndpoint = $"{baseUrl}/connect/token";
 
             var tokenRequest = new FormUrlEncodedContent(new[]
             {
-                new KeyValuePair<string, string>("grant_type", "password"),
-                new KeyValuePair<string, string>("client_id", "gestus_api"),
-                new KeyValuePair<string, string>("client_secret", "gestus_api_secret_2024"),
-                new KeyValuePair<string, string>("username", request.Email),
-                new KeyValuePair<string, string>("password", request.Senha),
-                new KeyValuePair<string, string>("scope", "openid profile email roles offline_access")
-            });
+            new KeyValuePair<string, string>("grant_type", "password"),
+            new KeyValuePair<string, string>("username", request.Email),
+            new KeyValuePair<string, string>("password", request.Senha),
+            new KeyValuePair<string, string>("client_id", "gestus_api"),
+            new KeyValuePair<string, string>("client_secret", "gestus_api_secret_2024"),
+            new KeyValuePair<string, string>("scope", "openid profile email roles offline_access")
+        });
 
             var response = await httpClient.PostAsync(tokenEndpoint, tokenRequest);
 
+            // ✅ DEPOIS da validação: Registrar tentativa (sempre)
+            await _loginService.RegistrarTentativaLoginAsync(request.Email);
+
+            // ✅ TERCEIRO: Tratar falha na validação (senha incorreta)
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogWarning("⚠️ Erro no token endpoint: {Error}", errorContent);
+                _logger.LogWarning("❌ Falha na autenticação para {Email}: {StatusCode} - {Error}",
+                    request.Email, response.StatusCode, errorContent);
 
+                // ✅ RENOMEAR: usar 'usuarioParaContador' em vez de 'usuarioAtualizado'
+                var usuarioParaContador = await _userManager.FindByEmailAsync(request.Email);
+                
+                if (usuarioParaContador != null)
+                {
+                    // ✅ Calcular tentativas restantes
+                    var maxTentativas = _userManager.Options.Lockout.MaxFailedAccessAttempts;
+                    var tentativasAtuais = usuarioParaContador.AccessFailedCount;
+                    var tentativasRestantes = maxTentativas - tentativasAtuais;
+                    
+                    _logger.LogInformation("📊 Tentativas de login para {Email}: {TentativasAtuais}/{MaxTentativas} - Restantes: {Restantes}", 
+                        request.Email, tentativasAtuais, maxTentativas, tentativasRestantes);
+
+                    var detalhes = new List<string>
+                    {
+                        "A senha informada está incorreta"
+                    };
+
+                    // ✅ Informar tentativas restantes apenas se o usuário não estiver bloqueado
+                    if (!usuarioParaContador.LockoutEnabled || !usuarioParaContador.LockoutEnd.HasValue || usuarioParaContador.LockoutEnd <= DateTimeOffset.UtcNow)
+                    {
+                        if (tentativasRestantes > 1)
+                        {
+                            detalhes.Add($"Você tem {tentativasRestantes} tentativas restantes antes do bloqueio temporário");
+                        }
+                        else if (tentativasRestantes == 1)
+                        {
+                            detalhes.Add("⚠️ ATENÇÃO: Você tem apenas 1 tentativa restante antes do bloqueio temporário");
+                            detalhes.Add("Certifique-se da senha antes de tentar novamente");
+                        }
+                        else
+                        {
+                            detalhes.Add("Conta temporariamente bloqueada devido a muitas tentativas incorretas");
+                            if (usuarioParaContador.LockoutEnd.HasValue)
+                            {
+                                var tempoRestante = usuarioParaContador.LockoutEnd.Value - DateTimeOffset.UtcNow;
+                                if (tempoRestante.TotalMinutes > 0)
+                                {
+                                    detalhes.Add($"Tente novamente em {Math.Ceiling(tempoRestante.TotalMinutes)} minutos");
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // ✅ Usuário está bloqueado
+                        detalhes.Clear();
+                        detalhes.Add("Conta temporariamente bloqueada devido a muitas tentativas incorretas");
+                        
+                        if (usuarioParaContador.LockoutEnd.HasValue)
+                        {
+                            var tempoRestante = usuarioParaContador.LockoutEnd.Value - DateTimeOffset.UtcNow;
+                            if (tempoRestante.TotalMinutes > 0)
+                            {
+                                detalhes.Add($"Tente novamente em {Math.Ceiling(tempoRestante.TotalMinutes)} minutos");
+                            }
+                            else
+                            {
+                                detalhes.Add("O bloqueio expirou, você pode tentar fazer login novamente");
+                            }
+                        }
+                    }
+
+                    return Unauthorized(new RespostaErro
+                    {
+                        Erro = tentativasRestantes <= 0 ? "ContaBloqueada" : "SenhaIncorreta",
+                        Mensagem = tentativasRestantes <= 0 ? "Conta temporariamente bloqueada" : "Senha incorreta",
+                        Detalhes = detalhes
+                    });
+                }
+
+                // ✅ Fallback se não conseguir buscar o usuário
                 return Unauthorized(new RespostaErro
                 {
-                    Erro = "CredenciaisInvalidas",
-                    Mensagem = "Email ou senha incorretos"
+                    Erro = "SenhaIncorreta",
+                    Mensagem = "Senha incorreta",
+                    Detalhes = new List<string> { "A senha informada está incorreta" }
                 });
             }
 
-            var tokenResponse = await response.Content.ReadAsStringAsync();
-            var tokenData = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(tokenResponse);
+            // ✅ QUARTO: Processar login bem-sucedido
+            var tokenContent = await response.Content.ReadAsStringAsync();
+            var tokenData = JsonSerializer.Deserialize<JsonElement>(tokenContent);
 
-            var accessToken = tokenData.GetProperty("access_token").GetString()!;
-            var expiresIn = tokenData.GetProperty("expires_in").GetInt32();
-            var refreshToken = tokenData.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
+            // Buscar usuário completo
+            var usuario = await _userManager.Users
+    .Include(u => u.UsuarioPapeis)
+        .ThenInclude(up => up.Papel)
+    .AsNoTracking()
+    .FirstOrDefaultAsync(u => u.NormalizedEmail == request.Email.ToUpper());
 
-            // ✅ BUSCAR USUÁRIO APÓS LOGIN (dados atualizados)
-            var usuario = await _userManager.FindByEmailAsync(request.Email);
-            var papeis = await _userManager.GetRolesAsync(usuario!);
-            var permissoes = await ObterPermissoesUsuario(usuario!.Id);
+            if (usuario == null)
+            {
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
+                });
+            }
 
-            // ✅ CALCULAR EXPIRAÇÃO EM HORÁRIO LOCAL
-            var agora = _timezoneService.GetCurrentLocal();
-            var expiracao = agora.AddSeconds(expiresIn);
+            // ✅ Verificar se usuário está ativo
+            if (!usuario.Ativo)
+            {
+                _logger.LogWarning("⚠️ Tentativa de login em conta inativa: {Email}", request.Email);
+                return Unauthorized(new RespostaErro
+                {
+                    Erro = "ContaInativa",
+                    Mensagem = "Esta conta está inativa",
+                    Detalhes = new List<string>
+        {
+            "Sua conta foi desativada pelo administrador",
+            "Entre em contato com o suporte para reativação"
+        }
+                });
+            }
 
-            _logger.LogInformation("✅ Login realizado - Local: {Local}, Expiracao: {Expiracao}",
-                _timezoneService.FormatDateTimeWithTimezone(agora),
-                _timezoneService.FormatDateTimeWithTimezone(expiracao));
+            // ✅ Registrar login bem-sucedido
+            await _loginService.RegistrarLoginSucessoAsync(request.Email);
 
-            return Ok(new RespostaLogin
+            // ✅ Buscar usuário novamente para ter os dados atualizados após o registro de login
+            var usuarioAtualizado = await _userManager.Users
+                .Include(u => u.UsuarioPapeis)
+                    .ThenInclude(up => up.Papel)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.NormalizedEmail == request.Email.ToUpper());
+
+            // ✅ VERIFICAÇÃO ADICIONAL DE SEGURANÇA (resolver CS8602)
+            if (usuarioAtualizado == null)
+            {
+                _logger.LogError("❌ Usuário não encontrado após atualização de login: {Email}", request.Email);
+                return StatusCode(500, new RespostaErro
+                {
+                    Erro = "ErroInterno",
+                    Mensagem = "Erro interno durante o processamento do login"
+                });
+            }
+
+            // ✅ AGORA podemos acessar usuarioAtualizado.UsuarioPapeis com segurança
+            var papeis = usuarioAtualizado.UsuarioPapeis
+                .Where(up => up.Ativo && up.Papel.Ativo)
+                .Select(up => up.Papel.Name!)
+                .ToList();
+
+            var permissoes = await ObterPermissoesUsuario(usuarioAtualizado.Id);
+
+            // Criar estatísticas usando usuarioAtualizado
+            var estatisticas = new EstatisticasLogin
+            {
+                TotalLoginsSuccesso = usuarioAtualizado.ContadorLogins,
+                TotalTentativasLogin = usuarioAtualizado.ContadorLogins + usuarioAtualizado.AccessFailedCount,
+                TaxaSucessoLogin = usuarioAtualizado.ContadorLogins + usuarioAtualizado.AccessFailedCount > 0
+                    ? (double)usuarioAtualizado.ContadorLogins / (usuarioAtualizado.ContadorLogins + usuarioAtualizado.AccessFailedCount) * 100
+                    : 100,
+                PrimeiroLogin = usuarioAtualizado.DataCriacao,
+                TempoDesdeUltimoLogin = usuarioAtualizado.UltimoLogin.HasValue
+                    ? DateTime.UtcNow - usuarioAtualizado.UltimoLogin.Value
+                    : null,
+                MedialoginsPorMes = CalcularMediaLoginsPorMes(usuarioAtualizado),
+                DiasDesdeRegistro = (DateTime.UtcNow - usuarioAtualizado.DataCriacao).Days
+            };
+
+            // Construir resposta usando usuarioAtualizado
+            var respostaLogin = new RespostaLogin
             {
                 Sucesso = true,
-                Token = accessToken,
-                TipoToken = "Bearer",
-                // ✅ USAR HORÁRIO LOCAL
-                ExpiracaoEm = expiracao,
-                RefreshToken = refreshToken ?? "",
+                Token = tokenData.GetProperty("access_token").GetString()!,
+                TipoToken = tokenData.GetProperty("token_type").GetString()!,
+                ExpiracaoEm = DateTimeOffset.UtcNow.AddSeconds(tokenData.GetProperty("expires_in").GetInt32()).DateTime,
+                RefreshToken = tokenData.TryGetProperty("refresh_token", out var rt) ? rt.GetString()! : "",
                 Usuario = new InformacoesUsuario
                 {
-                    Id = usuario!.Id,
-                    Email = usuario.Email!,
-                    Nome = usuario.Nome,
-                    Sobrenome = usuario.Sobrenome,
-                    NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
-                    // ✅ CONVERTER UTC DO BANCO PARA HORÁRIO LOCAL
-                    UltimoLogin = usuario.UltimoLogin.HasValue ?
-                        _timezoneService.ToLocal(usuario.UltimoLogin.Value) :
-                        null,
-                    Papeis = papeis.ToList(),
+                    Id = usuarioAtualizado.Id,
+                    Email = usuarioAtualizado.Email!,
+                    Nome = usuarioAtualizado.Nome,
+                    Sobrenome = usuarioAtualizado.Sobrenome,
+                    NomeCompleto = usuarioAtualizado.NomeCompleto ?? $"{usuarioAtualizado.Nome} {usuarioAtualizado.Sobrenome}",
+                    UltimoLogin = usuarioAtualizado.UltimoLogin,
+                    ContadorLogins = usuarioAtualizado.ContadorLogins,
+                    UltimaTentativaLogin = usuarioAtualizado.UltimaTentativaLogin,
+                    TentativasLoginFalha = usuarioAtualizado.AccessFailedCount,
+                    Papeis = papeis,
                     Permissoes = permissoes,
-                    // ✅ ADICIONAR INFORMAÇÕES DE TIMEZONE
-                    InformacoesTimezone = _timezoneService.GetTimezoneDebugInfo()
+                    InformacoesTimezone = CriarInformacoesTimezoneUsuario(usuarioAtualizado.PreferenciaTimezone),
+                    EstatisticasLogin = estatisticas
                 }
-            });
+            };
+
+            _logger.LogInformation("✅ Login realizado com sucesso para: {Email} - ContadorLogins: {ContadorLogins}",
+                request.Email, usuarioAtualizado.ContadorLogins);
+
+            return Ok(respostaLogin);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro durante o login para: {Email}", request.Email);
+            _logger.LogError(ex, "❌ Erro durante o login para: {Email}", request.Email ?? "email_nulo");
             return StatusCode(500, new RespostaErro
             {
                 Erro = "ErroInterno",
-                Mensagem = "Erro interno do servidor"
+                Mensagem = "Erro interno durante o login"
             });
         }
     }
@@ -214,9 +383,6 @@ public class AutenticacaoController : ControllerBase
             var accessToken = tokenData.GetProperty("access_token").GetString()!;
             var expiresIn = tokenData.GetProperty("expires_in").GetInt32();
             var newRefreshToken = tokenData.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : request.RefreshToken;
-
-            // ✅ CORREÇÃO PRINCIPAL: OBTER USER ID DO REFRESH TOKEN VALIDADO NO OPENIDDICT
-            // Em vez de tentar decodificar o JWT, vamos usar o endpoint de introspecção ou buscar pelos claims do contexto
 
             // Fazer uma requisição de introspecção do refresh token para obter as informações
             var introspectionEndpoint = $"{baseUrl}/connect/introspect";
@@ -371,19 +537,24 @@ public class AutenticacaoController : ControllerBase
     {
         try
         {
-            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ??
-                        User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject);
 
             if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out var userIdInt))
             {
                 return Unauthorized(new RespostaErro
                 {
                     Erro = "TokenInvalido",
-                    Mensagem = "Token não contém ID de usuário válido"
+                    Mensagem = "Token inválido ou expirado"
                 });
             }
 
-            var usuario = await _userManager.FindByIdAsync(userId);
+            var usuario = await _userManager.Users
+                .Include(u => u.UsuarioPapeis.Where(up => up.Ativo))
+                    .ThenInclude(up => up.Papel)
+                        .ThenInclude(p => p.PapelPermissoes.Where(pp => pp.Ativo))
+                            .ThenInclude(pp => pp.Permissao)
+                .FirstOrDefaultAsync(u => u.Id == userIdInt);
+
             if (usuario == null || !usuario.Ativo)
             {
                 return Unauthorized(new RespostaErro
@@ -393,25 +564,37 @@ public class AutenticacaoController : ControllerBase
                 });
             }
 
-            var papeis = await _userManager.GetRolesAsync(usuario);
-            var permissoes = await ObterPermissoesUsuario(usuario.Id);
+            // Obter papéis e permissões
+            var papeis = usuario.UsuarioPapeis
+                .Where(up => up.Ativo && up.Papel.Ativo)
+                .Select(up => up.Papel.Name!)
+                .ToList();
 
-            return Ok(new InformacoesUsuario
+            var permissoes = usuario.UsuarioPapeis
+                .Where(up => up.Ativo && up.Papel.Ativo)
+                .SelectMany(up => up.Papel.PapelPermissoes)
+                .Where(pp => pp.Ativo && pp.Permissao.Ativo)
+                .Select(pp => pp.Permissao.Nome)
+                .Distinct()
+                .ToList();
+
+            var informacoesUsuario = new InformacoesUsuario
             {
                 Id = usuario.Id,
                 Email = usuario.Email!,
                 Nome = usuario.Nome,
                 Sobrenome = usuario.Sobrenome,
                 NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
-                // ✅ CONVERTER UTC PARA LOCAL
-                UltimoLogin = usuario.UltimoLogin.HasValue ?
-                    _timezoneService.ToLocal(usuario.UltimoLogin.Value) :
-                    null,
-                Papeis = papeis.ToList(),
+                UltimoLogin = usuario.UltimoLogin,
+                ContadorLogins = usuario.ContadorLogins,
+                UltimaTentativaLogin = usuario.UltimaTentativaLogin,
+                TentativasLoginFalha = usuario.AccessFailedCount,
+                Papeis = papeis,
                 Permissoes = permissoes,
-                // ✅ ADICIONAR INFORMAÇÕES DE TIMEZONE
-                InformacoesTimezone = _timezoneService.GetTimezoneDebugInfo()
-            });
+                InformacoesTimezone = CriarInformacoesTimezoneUsuario(usuario.PreferenciaTimezone)
+            };
+
+            return Ok(informacoesUsuario);
         }
         catch (Exception ex)
         {
@@ -419,7 +602,7 @@ public class AutenticacaoController : ControllerBase
             return StatusCode(500, new RespostaErro
             {
                 Erro = "ErroInterno",
-                Mensagem = "Erro interno do servidor"
+                Mensagem = "Erro interno ao obter perfil"
             });
         }
     }
@@ -555,6 +738,83 @@ public class AutenticacaoController : ControllerBase
             return DateTimeOffset.FromUnixTimeSeconds(expUnix).DateTime;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Calcula média de logins por mês do usuário
+    /// </summary>
+    private double CalcularMediaLoginsPorMes(Usuario usuario)
+    {
+        var diasDesdeRegistro = (DateTime.UtcNow - usuario.DataCriacao).Days;
+        if (diasDesdeRegistro == 0) return 0;
+
+        var mesesDesdeRegistro = Math.Max(1, diasDesdeRegistro / 30.0);
+        return Math.Round(usuario.ContadorLogins / mesesDesdeRegistro, 2);
+    }
+
+    /// <summary>
+    /// Método auxiliar para criar informações de timezone do usuário:
+    /// </summary>
+    private object CriarInformacoesTimezoneUsuario(string? timezoneUsuario)
+    {
+        try
+        {
+            var timezoneId = timezoneUsuario ?? "America/Sao_Paulo";
+
+            // Obter o timezone específico do usuário
+            var userTimezone = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+            var utcNow = DateTime.UtcNow;
+            var localTimeUsuario = TimeZoneInfo.ConvertTimeFromUtc(utcNow, userTimezone);
+            var offset = userTimezone.GetUtcOffset(localTimeUsuario);
+
+            return new
+            {
+                TimezoneId = timezoneId,
+                DisplayName = userTimezone.DisplayName,
+                HorarioLocal = localTimeUsuario.ToString("dd/MM/yyyy HH:mm:ss"),
+                HorarioUtc = utcNow.ToString("dd/MM/yyyy HH:mm:ss"),
+                Offset = offset,
+                OffsetString = offset.TotalHours >= 0 ? $"+{offset:hh\\:mm}" : $"{offset:hh\\:mm}",
+                IsDaylightSaving = userTimezone.IsDaylightSavingTime(localTimeUsuario)
+            };
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            // Fallback para America/Sao_Paulo se o timezone do usuário não for válido
+            var fallbackTimezone = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+            var utcNow = DateTime.UtcNow;
+            var localTime = TimeZoneInfo.ConvertTimeFromUtc(utcNow, fallbackTimezone);
+            var offset = fallbackTimezone.GetUtcOffset(localTime);
+
+            return new
+            {
+                TimezoneId = "America/Sao_Paulo",
+                DisplayName = fallbackTimezone.DisplayName,
+                HorarioLocal = localTime.ToString("dd/MM/yyyy HH:mm:ss"),
+                HorarioUtc = utcNow.ToString("dd/MM/yyyy HH:mm:ss"),
+                Offset = offset,
+                OffsetString = offset.TotalHours >= 0 ? $"+{offset:hh\\:mm}" : $"{offset:hh\\:mm}",
+                IsDaylightSaving = fallbackTimezone.IsDaylightSavingTime(localTime),
+                Observacao = $"Timezone '{timezoneUsuario}' inválido, usando fallback"
+            };
+        }
+        catch (Exception ex)
+        {
+            // Fallback para UTC em caso de erro geral
+            _logger.LogError(ex, "Erro ao obter informações de timezone do usuário: {TimezoneUsuario}", timezoneUsuario);
+
+            return new
+            {
+                TimezoneId = "UTC",
+                DisplayName = "UTC",
+                HorarioLocal = DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm:ss"),
+                HorarioUtc = DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm:ss"),
+                Offset = TimeSpan.Zero,
+                OffsetString = "+00:00",
+                IsDaylightSaving = false,
+                Erro = "Erro ao processar timezone do usuário"
+            };
+        }
     }
 
     #endregion
@@ -697,6 +957,21 @@ public class InformacoesUsuario
     public DateTime? UltimoLogin { get; set; }
 
     /// <summary>
+    /// Contador total de logins
+    /// </summary>
+    public int ContadorLogins { get; set; }
+
+    /// <summary>
+    /// Data/hora da última tentativa de login
+    /// </summary>
+    public DateTime? UltimaTentativaLogin { get; set; }
+
+    /// <summary>
+    /// Tentativas de login falharam
+    /// </summary>
+    public int TentativasLoginFalha { get; set; }
+
+    /// <summary>
     /// Lista de papéis do usuário
     /// </summary>
     public List<string> Papeis { get; set; } = new();
@@ -705,7 +980,54 @@ public class InformacoesUsuario
     /// Lista de permissões do usuário
     /// </summary>
     public List<string> Permissoes { get; set; } = new();
+
     public object? InformacoesTimezone { get; set; }
+
+    /// <summary>
+    /// Estatísticas de sessão
+    /// </summary>
+    public EstatisticasLogin? EstatisticasLogin { get; set; }
+}
+
+/// <summary>
+/// Estatísticas de login do usuário
+/// </summary>
+public class EstatisticasLogin
+{
+    /// <summary>
+    /// Total de logins bem-sucedidos
+    /// </summary>
+    public int TotalLoginsSuccesso { get; set; }
+
+    /// <summary>
+    /// Total de tentativas de login (sucesso + falha)
+    /// </summary>
+    public int TotalTentativasLogin { get; set; }
+
+    /// <summary>
+    /// Taxa de sucesso do login (0-100)
+    /// </summary>
+    public double TaxaSucessoLogin { get; set; }
+
+    /// <summary>
+    /// Primeiro login registrado
+    /// </summary>
+    public DateTime? PrimeiroLogin { get; set; }
+
+    /// <summary>
+    /// Tempo desde o último login
+    /// </summary>
+    public TimeSpan? TempoDesdeUltimoLogin { get; set; }
+
+    /// <summary>
+    /// Média de logins por mês
+    /// </summary>
+    public double MedialoginsPorMes { get; set; }
+
+    /// <summary>
+    /// Dias desde a criação da conta
+    /// </summary>
+    public int DiasDesdeRegistro { get; set; }
 }
 
 /// <summary>

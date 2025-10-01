@@ -159,7 +159,6 @@ public class UsuariosController : ControllerBase
         {
             var usuarioLogadoId = ObterUsuarioLogadoId();
 
-            // ✅ AUTORIZAÇÃO CONTEXTUAL - pode ver próprio perfil OU ter permissão
             var podeVisualizar = usuarioLogadoId == id || TemPermissao("Usuarios.Visualizar");
 
             if (!podeVisualizar)
@@ -167,10 +166,9 @@ public class UsuariosController : ControllerBase
                 return Forbid("Permissão insuficiente para visualizar este usuário");
             }
 
-            _logger.LogInformation("🔍 Buscando usuário ID: {Id} - Solicitado por: {UsuarioLogadoId}",
+            _logger.LogInformation("🔍 Buscando usuário completo ID: {Id} - Solicitado por: {UsuarioLogadoId}",
                 id, usuarioLogadoId);
 
-            // ✅ BUSCA OTIMIZADA COM TODOS OS RELACIONAMENTOS
             var usuario = await _context.Users
                 .Include(u => u.UsuarioPapeis.Where(up => up.Ativo))
                     .ThenInclude(up => up.Papel)
@@ -178,6 +176,12 @@ public class UsuariosController : ControllerBase
                             .ThenInclude(pp => pp.Permissao)
                 .Include(u => u.UsuarioGrupos.Where(ug => ug.Ativo))
                     .ThenInclude(ug => ug.Grupo)
+                .Include(u => u.UsuariosAplicacao.Where(ua => ua.Ativo))
+                    .ThenInclude(ua => ua.Aplicacao)
+                        .ThenInclude(a => a.TipoAplicacao)
+                .Include(u => u.UsuariosAplicacao.Where(ua => ua.Ativo))
+                    .ThenInclude(ua => ua.Aplicacao)
+                        .ThenInclude(a => a.StatusAplicacao)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(u => u.Id == id);
 
@@ -191,89 +195,24 @@ public class UsuariosController : ControllerBase
                 });
             }
 
-            // ✅ CONSTRUIR RESPOSTA DETALHADA
-            var papeis = usuario.UsuarioPapeis
-                .Where(up => up.Ativo && up.Papel.Ativo)
-                .Select(up => new PapelUsuario
-                {
-                    Id = up.Papel.Id,
-                    Nome = up.Papel.Name!,
-                    Descricao = up.Papel.Descricao,
-                    Categoria = up.Papel.Categoria,
-                    DataAtribuicao = up.DataAtribuicao,
-                    DataExpiracao = up.DataExpiracao
-                })
-                .ToList();
+            // ✅ CONSTRUIR USUÁRIO COMPLETO - REMOVER await
+            var usuarioCompleto = ConstruirUsuarioCompleto(usuario);
 
-            var permissoes = usuario.UsuarioPapeis
-                .Where(up => up.Ativo && up.Papel.Ativo)
-                .SelectMany(up => up.Papel.PapelPermissoes)
-                .Where(pp => pp.Ativo && pp.Permissao.Ativo)
-                .Select(pp => new PermissaoUsuario
-                {
-                    Id = pp.Permissao.Id,
-                    Nome = pp.Permissao.Nome,
-                    Descricao = pp.Permissao.Descricao,
-                    Recurso = pp.Permissao.Recurso,
-                    Acao = pp.Permissao.Acao,
-                    Categoria = pp.Permissao.Categoria,
-                    OrigemPapel = pp.Papel.Name!
-                })
-                .DistinctBy(p => p.Nome)
-                .ToList();
-
-            var grupos = usuario.UsuarioGrupos
-                .Where(ug => ug.Ativo && ug.Grupo.Ativo)
-                .Select(ug => new GrupoUsuario
-                {
-                    Id = ug.Grupo.Id,
-                    Nome = ug.Grupo.Nome,
-                    Descricao = ug.Grupo.Descricao,
-                    Tipo = ug.Grupo.Tipo,
-                    DataAdesao = ug.DataAdesao
-                })
-                .ToList();
-
-            var usuarioCompleto = new UsuarioCompleto
-            {
-                Id = usuario.Id,
-                Email = usuario.Email!,
-                Nome = usuario.Nome,
-                Sobrenome = usuario.Sobrenome,
-                NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
-                Telefone = usuario.PhoneNumber,
-                EmailConfirmado = usuario.EmailConfirmed,
-                TelefoneConfirmado = usuario.PhoneNumberConfirmed,
-                Ativo = usuario.Ativo,
-                Observacoes = usuario.Observacoes,
-                DataCriacao = usuario.DataCriacao,
-                DataAtualizacao = usuario.DataAtualizacao,
-                UltimoLogin = usuario.UltimoLogin,
-                Papeis = papeis,
-                Permissoes = permissoes,
-                Grupos = grupos,
-                Estatisticas = new EstatisticasUsuario
-                {
-                    TotalPapeis = papeis.Count,
-                    TotalPermissoes = permissoes.Count,
-                    TotalGrupos = grupos.Count,
-                    ContadorLogins = await ContarLoginsUsuario(id),
-                    UltimoPapelAtribuido = papeis.OrderByDescending(p => p.DataAtribuicao).FirstOrDefault()?.DataAtribuicao
-                }
-            };
-
-            // ✅ REGISTRAR AUDITORIA
             await RegistrarAuditoria("Usuarios.Visualizar", "Usuarios", id.ToString(),
-                $"Visualizado usuário: {usuario.Email}");
+                $"Visualizado usuário completo: {usuario.Email}");
 
-            _logger.LogInformation("✅ Usuário obtido - ID: {Id}, Email: {Email}, Papéis: {TotalPapeis}, Permissões: {TotalPermissoes}",
-                id, usuario.Email, papeis.Count, permissoes.Count);
+            _logger.LogInformation("✅ Usuário completo obtido - ID: {Id}, Email: {Email}, " +
+                "Papéis: {TotalPapeis}, Permissões: {TotalPermissoes}, Aplicações: {TotalAplicacoes}",
+                id, usuario.Email,
+                usuarioCompleto.Papeis.Count,
+                usuarioCompleto.Permissoes.Count,
+                usuarioCompleto.Aplicacoes.Count);
 
             return Ok(usuarioCompleto);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Erro ao obter usuário ID: {Id}", id);
+            _logger.LogError(ex, "❌ Erro ao obter usuário completo ID: {Id}", id);
             return StatusCode(500, new RespostaErro
             {
                 Erro = "ErroInterno",
@@ -866,7 +805,7 @@ public class UsuariosController : ControllerBase
                 id, usuarioDesativado.Email);
 
             // ✅ RETORNAR DADOS COMPLETOS ATUALIZADOS
-            var usuarioCompleto = await ConstruirUsuarioCompleto(usuarioDesativado);
+            var usuarioCompleto = ConstruirUsuarioCompleto(usuarioDesativado);
 
             return Ok(usuarioCompleto);
         }
@@ -3125,21 +3064,23 @@ public class UsuariosController : ControllerBase
     /// <summary>
     /// Constrói objeto UsuarioCompleto a partir de uma entidade Usuario
     /// </summary>
-    private async Task<UsuarioCompleto> ConstruirUsuarioCompleto(Usuario usuario)
+    private UsuarioCompleto ConstruirUsuarioCompleto(Usuario usuario) // ✅ REMOVER async
     {
+        // ✅ MAPEAR PAPÉIS
         var papeis = usuario.UsuarioPapeis
             .Where(up => up.Ativo && up.Papel.Ativo)
             .Select(up => new PapelUsuario
             {
                 Id = up.Papel.Id,
                 Nome = up.Papel.Name!,
-                Descricao = up.Papel.Descricao,
+                Descricao = up.Papel.Descricao ?? "",
                 Categoria = up.Papel.Categoria,
                 DataAtribuicao = up.DataAtribuicao,
                 DataExpiracao = up.DataExpiracao
             })
             .ToList();
 
+        // ✅ MAPEAR PERMISSÕES (usando PermissaoUsuario conforme DTO)
         var permissoes = usuario.UsuarioPapeis
             .Where(up => up.Ativo && up.Papel.Ativo)
             .SelectMany(up => up.Papel.PapelPermissoes)
@@ -3157,6 +3098,7 @@ public class UsuariosController : ControllerBase
             .DistinctBy(p => p.Nome)
             .ToList();
 
+        // ✅ MAPEAR GRUPOS
         var grupos = usuario.UsuarioGrupos
             .Where(ug => ug.Ativo && ug.Grupo.Ativo)
             .Select(ug => new GrupoUsuario
@@ -3169,32 +3111,211 @@ public class UsuariosController : ControllerBase
             })
             .ToList();
 
+        // ✅ MAPEAR APLICAÇÕES
+        var aplicacoes = usuario.UsuariosAplicacao
+            .Where(ua => ua.Ativo)
+            .Select(ua => new AplicacaoUsuario
+            {
+                Id = ua.Aplicacao.Id,
+                Nome = ua.Aplicacao.Nome,
+                Codigo = ua.Aplicacao.Codigo,
+                Descricao = ua.Aplicacao.Descricao,
+                UrlBase = ua.Aplicacao.UrlBase,
+                TipoAplicacao = new TipoAplicacaoUsuario
+                {
+                    Codigo = ua.Aplicacao.TipoAplicacao.Codigo,
+                    Nome = ua.Aplicacao.TipoAplicacao.Nome,
+                    Icone = ua.Aplicacao.TipoAplicacao.Icone,
+                    Cor = ua.Aplicacao.TipoAplicacao.Cor
+                },
+                StatusAplicacao = new StatusAplicacaoUsuario
+                {
+                    Codigo = ua.Aplicacao.StatusAplicacao.Codigo,
+                    Nome = ua.Aplicacao.StatusAplicacao.Nome,
+                    CorFundo = ua.Aplicacao.StatusAplicacao.CorFundo,
+                    CorTexto = ua.Aplicacao.StatusAplicacao.CorTexto,
+                    Icone = ua.Aplicacao.StatusAplicacao.Icone,
+                    PermiteAcesso = ua.Aplicacao.StatusAplicacao.PermiteAcesso,
+                    MensagemUsuario = ua.Aplicacao.StatusAplicacao.MensagemUsuario
+                },
+                Versao = ua.Aplicacao.Versao,
+                NivelSeguranca = ua.Aplicacao.NivelSeguranca,
+                StatusAcesso = ObterStatusAcessoUsuario(ua),
+                DataSolicitacao = ua.DataSolicitacao,
+                DataAprovacao = ua.DataAprovacao,
+                DataExpiracao = ua.DataExpiracao,
+                Justificativa = ua.Justificativa,
+                ObservacoesAprovacao = ua.ObservacoesAprovacao,
+                AprovadoPor = ua.AprovadoPor?.NomeCompleto,
+                Ativo = ua.Ativo,
+                Aprovado = ua.Aprovado,
+                ConfiguracoesUsuario = ua.ConfiguracoesUsuario,
+                TotalPermissoes = 0, // TODO: Implementar quando necessário
+                Permissoes = new List<PermissaoAplicacaoUsuario>() // TODO: Implementar quando necessário
+            })
+            .ToList();
+
+        // ✅ CALCULAR ESTATÍSTICAS BÁSICAS
+        var estatisticas = new EstatisticasUsuario
+        {
+            TotalPapeis = papeis.Count,
+            TotalPermissoes = permissoes.Count,
+            TotalGrupos = grupos.Count,
+            TotalAplicacoes = aplicacoes.Count,
+            AplicacoesAprovadas = aplicacoes.Count(a => a.Aprovado),
+            AplicacoesPendentes = aplicacoes.Count(a => !a.Aprovado && a.Ativo),
+            AplicacoesExpiradas = aplicacoes.Count(a => a.DataExpiracao.HasValue && a.DataExpiracao < DateTime.UtcNow),
+            AplicacoesSuspensas = aplicacoes.Count(a => !a.Ativo),
+            ContadorLogins = usuario.ContadorLogins,
+            ContadorLoginsFalha = usuario.AccessFailedCount,
+            UltimoPapelAtribuido = papeis.OrderByDescending(p => p.DataAtribuicao).FirstOrDefault()?.DataAtribuicao,
+            UltimaAplicacaoSolicitada = aplicacoes.OrderByDescending(a => a.DataSolicitacao).FirstOrDefault()?.DataSolicitacao,
+            UltimaAlteracaoSenha = usuario.DataAtualizacao, // Aproximação
+            TempoMedioSessao = null, // TODO: Implementar quando tiver controle de sessões
+            SessoesAtivas = 0, // TODO: Implementar quando tiver controle de sessões
+            TotalNotificacoes = 0, // TODO: Implementar quando tiver sistema de notificações
+            NotificacoesNaoLidas = 0 // TODO: Implementar quando tiver sistema de notificações
+        };
+
+        // ✅ CALCULAR COMPLETUDE DO PERFIL
+        var completudePerfil = CalcularCompletudePerfil(usuario);
+
+        // ✅ HISTÓRICO SIMPLES (usando dados existentes)
+        var historicoRecente = new HistoricoUsuario
+        {
+            UltimosLogins = usuario.UltimoLogin.HasValue ? new List<EventoUsuario>
+        {
+            new EventoUsuario
+            {
+                Data = usuario.UltimoLogin.Value,
+                Tipo = "Login",
+                Descricao = "Último login registrado",
+                Sucesso = true
+            }
+        } : new List<EventoUsuario>(),
+
+            UltimasAlteracoes = usuario.DataAtualizacao.HasValue ? new List<EventoUsuario>
+        {
+            new EventoUsuario
+            {
+                Data = usuario.DataAtualizacao.Value,
+                Tipo = "Alteracao",
+                Descricao = "Última atualização do perfil",
+                Sucesso = true
+            }
+        } : new List<EventoUsuario>(),
+
+            UltimasSolicitacoes = new List<EventoUsuario>(), // TODO: Implementar quando tiver sistema de solicitações
+            UltimosAcessos = new List<EventoUsuario>() // TODO: Implementar quando tiver controle de acessos
+        };
+
+        // ✅ INFORMAÇÕES ADMINISTRATIVAS
+        var infoAdmin = new InformacoesAdministrativas
+        {
+            StatusGeral = ObterStatusGeral(usuario),
+            UltimaOperacao = "Atualização",
+            DataUltimaOperacao = usuario.DataAtualizacao ?? usuario.DataCriacao,
+            OperadorUltimaOperacao = "Sistema", // TODO: Implementar auditoria de usuários
+            TagsAdministrativas = new List<string>(),
+            NivelRisco = CalcularNivelRisco(usuario),
+            JustificativaNivelRisco = ObterJustificativaNivelRisco(usuario),
+            RequerRevisaoManual = usuario.AccessFailedCount > 5 || !usuario.EmailConfirmed,
+            ProximaRevisao = usuario.AccessFailedCount > 5 ? DateTime.UtcNow.AddDays(7) : null,
+            AlertasAtivos = ObterAlertasAtivos(usuario),
+            MetadadosAdicionais = new Dictionary<string, object>
+            {
+                ["TempoDesdeUltimoLogin"] = usuario.UltimoLogin.HasValue ?
+                (object)(DateTime.UtcNow - usuario.UltimoLogin.Value) : null!, // ✅ CORRIGIR: Cast para object e null!
+                ["ContaIdadeDias"] = (DateTime.UtcNow - usuario.DataCriacao).Days,
+                ["EmailConfirmado"] = usuario.EmailConfirmed,
+                ["TelefoneConfirmado"] = usuario.PhoneNumberConfirmed,
+                ["AutenticacaoDoisFatoresAtiva"] = usuario.TwoFactorEnabled
+            }
+        };
+
         return new UsuarioCompleto
         {
+            // ✅ INFORMAÇÕES BÁSICAS
             Id = usuario.Id,
             Email = usuario.Email!,
             Nome = usuario.Nome,
             Sobrenome = usuario.Sobrenome,
             NomeCompleto = usuario.NomeCompleto ?? $"{usuario.Nome} {usuario.Sobrenome}",
             Telefone = usuario.PhoneNumber,
+
+            // ✅ STATUS
             EmailConfirmado = usuario.EmailConfirmed,
             TelefoneConfirmado = usuario.PhoneNumberConfirmed,
             Ativo = usuario.Ativo,
+            ContaBloqueada = usuario.LockoutEnd.HasValue && usuario.LockoutEnd > DateTimeOffset.UtcNow,
+            DataBloqueio = usuario.LockoutEnd?.DateTime,
+            MotivoBloqueio = usuario.MotivoBloqueio,
+
+            // ✅ AUDITORIA
             Observacoes = usuario.Observacoes,
             DataCriacao = usuario.DataCriacao,
             DataAtualizacao = usuario.DataAtualizacao,
             UltimoLogin = usuario.UltimoLogin,
+            // TODO: Implementar auditoria de criação/atualização
+            CriadoPorId = null,
+            CriadoPorNome = null,
+            AtualizadoPorId = null,
+            AtualizadoPorNome = null,
+
+            // ✅ PERFIL ESTENDIDO
+            CaminhoFotoPerfil = usuario.CaminhoFotoPerfil,
+            UrlFotoPerfil = !string.IsNullOrEmpty(usuario.CaminhoFotoPerfil) ?
+                $"/api/usuarios/{usuario.Id}/foto" : null,
+            Profissao = usuario.Profissao,
+            Departamento = usuario.Departamento,
+            Bio = usuario.Bio,
+            DataNascimento = usuario.DataNascimento,
+            EnderecoCompleto = usuario.EnderecoCompleto,
+            Cidade = usuario.Cidade,
+            Estado = usuario.Estado,
+            Cep = usuario.Cep,
+            TelefoneAlternativo = usuario.TelefoneAlternativo,
+
+            // ✅ PREFERÊNCIAS
+            PreferenciaIdioma = usuario.PreferenciaIdioma ?? "pt-BR",
+            PreferenciaTimezone = usuario.PreferenciaTimezone ?? "America/Sao_Paulo",
+
+            // ✅ CONFIGURAÇÕES (usando campos do modelo)
+            Privacidade = new ConfiguracaoPrivacidade
+            {
+                ExibirEmail = usuario.ExibirEmail,
+                ExibirTelefone = usuario.ExibirTelefone,
+                ExibirDataNascimento = usuario.ExibirDataNascimento,
+                ExibirEndereco = usuario.ExibirEndereco,
+                PerfilPublico = usuario.PerfilPublico
+            },
+
+            Notificacoes = new ConfiguracaoNotificacao
+            {
+                NotificacaoEmail = usuario.NotificacaoEmail,
+                NotificacaoSms = usuario.NotificacaoSms,
+                NotificacaoPush = usuario.NotificacaoPush
+            },
+
+            // ✅ COMPLETUDE DO PERFIL
+            CompletudePerfil = completudePerfil,
+
+            // ✅ SEGURANÇA
+            TentativasLoginFalha = usuario.AccessFailedCount,
+            UltimaTentativaLogin = usuario.UltimaTentativaLogin,
+            AutenticacaoDoisFatores = usuario.TwoFactorEnabled,
+            AutenticacaoDoisFatoresAtiva = usuario.TwoFactorEnabled, // Simplificado por enquanto
+
+            // ✅ RELACIONAMENTOS
             Papeis = papeis,
             Permissoes = permissoes,
             Grupos = grupos,
-            Estatisticas = new EstatisticasUsuario
-            {
-                TotalPapeis = papeis.Count,
-                TotalPermissoes = permissoes.Count,
-                TotalGrupos = grupos.Count,
-                ContadorLogins = await ContarLoginsUsuario(usuario.Id),
-                UltimoPapelAtribuido = papeis.OrderByDescending(p => p.DataAtribuicao).FirstOrDefault()?.DataAtribuicao
-            }
+            Aplicacoes = aplicacoes,
+
+            // ✅ ESTATÍSTICAS, HISTÓRICO E ADMIN
+            Estatisticas = estatisticas,
+            HistoricoRecente = historicoRecente,
+            InformacoesAdmin = infoAdmin
         };
     }
 
@@ -6289,51 +6410,53 @@ public class UsuariosController : ControllerBase
         };
     }
 
-    private StatusAcessoUsuario ObterStatusAcessoUsuario(UsuarioAplicacao usuarioAplicacao)
+    /// <summary>
+    /// Obtém status de acesso do usuário à aplicação
+    /// </summary>
+    private StatusAcessoUsuario ObterStatusAcessoUsuario(UsuarioAplicacao ua)
     {
-        if (!usuarioAplicacao.Ativo)
+        // ✅ CORRIGIR: Remover padrão inalcançável
+        var codigo = (ua.Aprovado, ua.Ativo, ua.DataExpiracao) switch
         {
-            return new StatusAcessoUsuario
-            {
-                Codigo = "suspenso",
-                Nome = "Suspenso",
-                CorFundo = "#6c757d",
-                CorTexto = "#ffffff",
-                Icone = "⏸️"
-            };
-        }
+            (false, _, _) => "pendente",
+            (true, false, _) => "suspenso",
+            (true, true, not null) when ua.DataExpiracao < DateTime.UtcNow => "expirado",
+            (true, true, null) => "aprovado",
+            (true, true, not null) => "aprovado"
+        };
 
-        if (!usuarioAplicacao.Aprovado)
+        var nome = codigo switch
         {
-            return new StatusAcessoUsuario
-            {
-                Codigo = "pendente",
-                Nome = "Pendente",
-                CorFundo = "#ffc107",
-                CorTexto = "#000000",
-                Icone = "⏳"
-            };
-        }
+            "aprovado" => "Aprovado",
+            "pendente" => "Pendente",
+            "expirado" => "Expirado",
+            "suspenso" => "Suspenso",
+            _ => "Desconhecido"
+        };
 
-        if (usuarioAplicacao.DataExpiracao.HasValue && usuarioAplicacao.DataExpiracao <= DateTime.UtcNow)
+        var (corFundo, corTexto) = codigo switch
         {
-            return new StatusAcessoUsuario
-            {
-                Codigo = "expirado",
-                Nome = "Expirado",
-                CorFundo = "#dc3545",
-                CorTexto = "#ffffff",
-                Icone = "⏰"
-            };
-        }
+            "aprovado" => ("#d4edda", "#155724"),
+            "pendente" => ("#fff3cd", "#856404"),
+            "expirado" => ("#f8d7da", "#721c24"),
+            "suspenso" => ("#e2e3e5", "#383d41"),
+            _ => ("#f8f9fa", "#495057")
+        };
 
         return new StatusAcessoUsuario
         {
-            Codigo = "aprovado",
-            Nome = "Aprovado",
-            CorFundo = "#28a745",
-            CorTexto = "#ffffff",
-            Icone = "✅"
+            Codigo = codigo,
+            Nome = nome,
+            CorFundo = corFundo,
+            CorTexto = corTexto,
+            Icone = codigo switch
+            {
+                "aprovado" => "check-circle",
+                "pendente" => "clock",
+                "expirado" => "x-circle",
+                "suspenso" => "pause-circle",
+                _ => "question-circle"
+            }
         };
     }
 
@@ -6970,100 +7093,137 @@ public class UsuariosController : ControllerBase
     {
         var campos = new List<CampoCompletude>
     {
-        // ✅ CAMPOS OBRIGATÓRIOS (peso maior)
-        new CampoCompletude("Nome", !string.IsNullOrWhiteSpace(usuario.Nome), true, 10),
-        new CampoCompletude("Sobrenome", !string.IsNullOrWhiteSpace(usuario.Sobrenome), true, 10),
-        new CampoCompletude("Email", !string.IsNullOrWhiteSpace(usuario.Email), true, 15),
-        
-        // ✅ CAMPOS IMPORTANTES (peso médio)
-        new CampoCompletude("Telefone", !string.IsNullOrWhiteSpace(usuario.PhoneNumber), false, 8),
-        new CampoCompletude("Foto de Perfil", !string.IsNullOrWhiteSpace(usuario.CaminhoFotoPerfil), false, 8),
-        new CampoCompletude("Data de Nascimento", usuario.DataNascimento.HasValue, false, 6),
-        new CampoCompletude("Profissão", !string.IsNullOrWhiteSpace(usuario.Profissao), false, 7),
-        new CampoCompletude("Departamento", !string.IsNullOrWhiteSpace(usuario.Departamento), false, 5),
-        
-        // ✅ CAMPOS OPCIONAIS (peso menor)
-        new CampoCompletude("Bio", !string.IsNullOrWhiteSpace(usuario.Bio), false, 4),
-        new CampoCompletude("Endereço", !string.IsNullOrWhiteSpace(usuario.EnderecoCompleto), false, 5),
-        new CampoCompletude("Cidade", !string.IsNullOrWhiteSpace(usuario.Cidade), false, 3),
-        new CampoCompletude("Estado", !string.IsNullOrWhiteSpace(usuario.Estado), false, 3),
-        new CampoCompletude("CEP", !string.IsNullOrWhiteSpace(usuario.Cep), false, 3),
-        new CampoCompletude("Telefone Alternativo", !string.IsNullOrWhiteSpace(usuario.TelefoneAlternativo), false, 3),
-        
-        // ✅ CAMPOS DE CONFIGURAÇÃO (peso baixo)
-        new CampoCompletude("Idioma", !string.IsNullOrWhiteSpace(usuario.PreferenciaIdioma), false, 2),
-        new CampoCompletude("Fuso Horário", !string.IsNullOrWhiteSpace(usuario.PreferenciaTimezone), false, 2)
+        new("Email", !string.IsNullOrEmpty(usuario.Email), true, 15),
+        new("Nome", !string.IsNullOrEmpty(usuario.Nome), true, 15),
+        new("Sobrenome", !string.IsNullOrEmpty(usuario.Sobrenome), true, 15),
+        new("Telefone", !string.IsNullOrEmpty(usuario.PhoneNumber), false, 10),
+        new("Profissão", !string.IsNullOrEmpty(usuario.Profissao), false, 8),
+        new("Departamento", !string.IsNullOrEmpty(usuario.Departamento), false, 8),
+        new("Bio", !string.IsNullOrEmpty(usuario.Bio), false, 5),
+        new("Data Nascimento", usuario.DataNascimento.HasValue, false, 5),
+        new("Endereço", !string.IsNullOrEmpty(usuario.EnderecoCompleto), false, 7),
+        new("Cidade", !string.IsNullOrEmpty(usuario.Cidade), false, 5),
+        new("Estado", !string.IsNullOrEmpty(usuario.Estado), false, 3),
+        new("CEP", !string.IsNullOrEmpty(usuario.Cep), false, 4),
+        new("Foto Perfil", !string.IsNullOrEmpty(usuario.CaminhoFotoPerfil), false, 10)
     };
 
-        // ✅ CALCULAR ESTATÍSTICAS
         var camposPreenchidos = campos.Count(c => c.Preenchido);
-        var totalCampos = campos.Count;
-        var pesoTotalPreenchido = campos.Where(c => c.Preenchido).Sum(c => c.Peso);
-        var pesoTotalPossivel = campos.Sum(c => c.Peso);
-        var camposObrigatoriosPreenchidos = campos.Count(c => c.Obrigatorio && c.Preenchido);
-        var totalCamposObrigatorios = campos.Count(c => c.Obrigatorio);
+        var camposObrigatoriosCompletos = campos.Where(c => c.Obrigatorio).All(c => c.Preenchido);
+        var pesoTotal = campos.Sum(c => c.Peso);
+        var pesoPreenchido = campos.Where(c => c.Preenchido).Sum(c => c.Peso);
+        var percentual = (double)pesoPreenchido / pesoTotal * 100;
 
-        // ✅ CALCULAR PERCENTUAL PONDERADO
-        var percentualCompleto = pesoTotalPossivel > 0
-            ? Math.Round((double)pesoTotalPreenchido / pesoTotalPossivel * 100, 1)
-            : 0;
-
-        // ✅ DETERMINAR NÍVEL DE COMPLETUDE
-        var nivelCompletude = percentualCompleto switch
+        var (nivel, cor) = percentual switch
         {
-            >= 90 => "Excelente",
-            >= 75 => "Muito Bom",
-            >= 60 => "Bom",
-            >= 40 => "Regular",
-            >= 20 => "Básico",
-            _ => "Incompleto"
+            >= 90 => ("Excelente", "#28a745"),
+            >= 75 => ("Muito Bom", "#17a2b8"),
+            >= 60 => ("Bom", "#ffc107"),
+            >= 40 => ("Regular", "#fd7e14"),
+            _ => ("Incompleto", "#dc3545")
         };
 
-        // ✅ DETERMINAR COR BASEADA NO PERCENTUAL
-        var cor = percentualCompleto switch
-        {
-            >= 90 => "#4caf50", // Verde
-            >= 75 => "#8bc34a", // Verde claro
-            >= 60 => "#ffc107", // Amarelo
-            >= 40 => "#ff9800", // Laranja
-            >= 20 => "#ff5722", // Laranja escuro
-            _ => "#f44336" // Vermelho
-        };
-
-        // ✅ GERAR SUGESTÕES DE MELHORIA
         var sugestoes = new List<string>();
-        var camposVazios = campos.Where(c => !c.Preenchido).OrderByDescending(c => c.Peso).Take(3);
-
-        foreach (var campo in camposVazios)
-        {
-            var acao = campo.Obrigatorio ? "complete" : "adicione";
-            sugestoes.Add($"Para melhorar seu perfil, {acao} o campo '{campo.Nome}'");
-        }
-
-        // ✅ ADICIONAR SUGESTÕES ESPECÍFICAS
-        if (!usuario.EmailConfirmed)
-        {
-            sugestoes.Insert(0, "Confirme seu endereço de email para aumentar a confiabilidade");
-        }
-
-        if (!string.IsNullOrWhiteSpace(usuario.PhoneNumber) && !usuario.PhoneNumberConfirmed)
-        {
-            sugestoes.Insert(0, "Confirme seu número de telefone para melhorar a segurança");
-        }
+        if (!camposObrigatoriosCompletos)
+            sugestoes.Add("Complete todos os campos obrigatórios");
+        if (string.IsNullOrEmpty(usuario.PhoneNumber))
+            sugestoes.Add("Adicione um telefone para contato");
+        if (string.IsNullOrEmpty(usuario.CaminhoFotoPerfil))
+            sugestoes.Add("Adicione uma foto de perfil");
+        if (string.IsNullOrEmpty(usuario.Profissao))
+            sugestoes.Add("Informe sua profissão");
 
         return new CompletudePerfil
         {
-            PercentualCompleto = percentualCompleto,
+            PercentualCompleto = Math.Round(percentual, 1),
             CamposPreenchidos = camposPreenchidos,
-            TotalCampos = totalCampos,
-            CamposObrigatoriosCompletos = camposObrigatoriosPreenchidos == totalCamposObrigatorios,
-            NivelCompletude = nivelCompletude,
+            TotalCampos = campos.Count,
+            CamposObrigatoriosCompletos = camposObrigatoriosCompletos,
+            NivelCompletude = nivel,
             Cor = cor,
             Campos = campos,
             Sugestoes = sugestoes,
-            ProximoPasso = sugestoes.FirstOrDefault() ?? "Seu perfil está completo!",
+            ProximoPasso = sugestoes.FirstOrDefault() ?? "Perfil completo!",
             DataCalculado = DateTime.UtcNow
         };
+    }
+
+    /// <summary>
+    /// Obtém status geral do usuário
+    /// </summary>
+    private string ObterStatusGeral(Usuario usuario)
+    {
+        if (!usuario.Ativo) return "Inativo";
+        if (usuario.LockoutEnd.HasValue && usuario.LockoutEnd > DateTimeOffset.UtcNow) return "Bloqueado";
+        if (!usuario.EmailConfirmed) return "Email Pendente";
+        return "Ativo";
+    }
+
+    /// <summary>
+    /// Calcula nível de risco do usuário (1-10)
+    /// </summary>
+    private int CalcularNivelRisco(Usuario usuario)
+    {
+        int risco = 1;
+
+        // Aumenta risco por tentativas de login falha
+        if (usuario.AccessFailedCount > 5) risco += 3;
+        else if (usuario.AccessFailedCount > 3) risco += 2;
+        else if (usuario.AccessFailedCount > 0) risco += 1;
+
+        // Aumenta risco por email não confirmado
+        if (!usuario.EmailConfirmed) risco += 2;
+
+        // Aumenta risco por conta bloqueada
+        if (usuario.LockoutEnd.HasValue && usuario.LockoutEnd > DateTimeOffset.UtcNow) risco += 4;
+
+        // Aumenta risco por inatividade
+        if (!usuario.Ativo) risco += 2;
+
+        // Reduz risco por 2FA ativo
+        if (usuario.TwoFactorEnabled) risco -= 1;
+
+        return Math.Max(1, Math.Min(10, risco));
+    }
+
+    /// <summary>
+    /// Obtém justificativa do nível de risco
+    /// </summary>
+    private string ObterJustificativaNivelRisco(Usuario usuario)
+    {
+        var fatores = new List<string>();
+
+        if (usuario.AccessFailedCount > 3)
+            fatores.Add($"Muitas tentativas de login falharam ({usuario.AccessFailedCount})");
+        if (!usuario.EmailConfirmed)
+            fatores.Add("Email não confirmado");
+        if (!usuario.Ativo)
+            fatores.Add("Conta inativa");
+        if (usuario.LockoutEnd.HasValue && usuario.LockoutEnd > DateTimeOffset.UtcNow)
+            fatores.Add("Conta bloqueada");
+        if (usuario.TwoFactorEnabled)
+            fatores.Add("2FA ativo (reduz risco)");
+
+        return fatores.Any() ? string.Join("; ", fatores) : "Perfil padrão sem fatores de risco elevado";
+    }
+
+    /// <summary>
+    /// Obtém alertas ativos do usuário
+    /// </summary>
+    private List<string> ObterAlertasAtivos(Usuario usuario)
+    {
+        var alertas = new List<string>();
+
+        if (usuario.AccessFailedCount > 3)
+            alertas.Add($"Muitas tentativas de login falharam ({usuario.AccessFailedCount})");
+        if (!usuario.EmailConfirmed)
+            alertas.Add("Email não confirmado");
+        if (usuario.LockoutEnd.HasValue && usuario.LockoutEnd > DateTimeOffset.UtcNow)
+            alertas.Add("Conta bloqueada");
+        if (!usuario.Ativo)
+            alertas.Add("Conta inativa");
+
+        return alertas;
     }
 
     /// <summary>
