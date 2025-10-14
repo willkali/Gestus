@@ -1,0 +1,446 @@
+/* Dropdown de Notificações */
+.dropdown-notificacoes {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 420px;
+  max-height: 600px;
+  background: var(--cor-branco);
+  border-radius: var(--raio-borda-grande);
+  box-shadow: var(--sombra-forte);
+  border: 1px solid var(--cor-borda);
+  z-index: 1000;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Cabeçalho */
+.cabecalho-notificacoes {
+  padding: var(--espacamento-md);
+  border-bottom: 1px solid var(--cor-borda);
+  background: var(--cor-fundo);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--espacamento-md);
+}
+
+.titulo-notificacoes {
+  flex: 1;
+}
+
+.titulo-notificacoes h3 {
+  margin: 0 0 var(--espacamento-xs) 0;
+  font-size: 1.1rem;
+  color: var(--cor-texto);
+  display: flex;
+  align-items: center;
+  gap: var(--espacamento-xs);
+}
+
+.contador-nao-lidas {
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+  font-weight: normal;
+}
+
+.acoes-notificacoes {
+  display: flex;
+  align-items: center;
+  gap: var(--espacamento-sm);
+}
+
+.btn-acao-notif {
+  background: var(--cor-acento);
+  color: var(--cor-branco);
+  border: none;
+  padding: var(--espacamento-xs) var(--espacamento-sm);
+  border-radius: var(--raio-borda);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--transicao-rapida);
+  white-space: nowrap;
+}
+
+.btn-acao-notif:hover {
+  background: #2980b9;
+  transform: translateY(-1px);
+}
+
+.btn-fechar-notif {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--cor-texto-secundario);
+  cursor: pointer;
+  padding: var(--espacamento-xs);
+  border-radius: var(--raio-borda);
+  transition: var(--transicao-rapida);
+}
+
+.btn-fechar-notif:hover {
+  background: var(--cor-fundo-escuro);
+  color: var(--cor-texto);
+}
+
+/* Filtros */
+.filtros-notificacoes {
+  display: flex;
+  background: var(--cor-fundo);
+  border-bottom: 1px solid var(--cor-borda);
+}
+
+.filtro-btn {
+  flex: 1;
+  padding: var(--espacamento-sm);
+  border: none;
+  background: transparent;
+  color: var(--cor-texto-secundario);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: var(--transicao-rapida);
+  position: relative;
+}
+
+.filtro-btn:hover {
+  background: var(--cor-fundo-escuro);
+  color: var(--cor-texto);
+}
+
+.filtro-btn.ativo {
+  color: var(--cor-acento);
+  font-weight: 600;
+}
+
+.filtro-btn.ativo::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--cor-acento);
+}
+
+/* Lista de notificações */
+.lista-notificacoes {
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cor-borda) transparent;
+}
+
+.lista-notificacoes::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lista-notificacoes::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lista-notificacoes::-webkit-scrollbar-thumb {
+  background: var(--cor-borda);
+  border-radius: 3px;
+}
+
+.lista-notificacoes::-webkit-scrollbar-thumb:hover {
+  background: var(--cor-texto-claro);
+}
+
+/* Item de notificação */
+.item-notificacao {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--espacamento-md);
+  padding: var(--espacamento-md);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: var(--transicao-rapida);
+  position: relative;
+}
+
+.item-notificacao:hover {
+  background: rgba(52, 152, 219, 0.02);
+}
+
+.item-notificacao:last-child {
+  border-bottom: none;
+}
+
+.item-notificacao.nao-lida {
+  background: rgba(52, 152, 219, 0.03);
+  border-left: 3px solid var(--cor-acento);
+}
+
+.item-notificacao.nao-lida:hover {
+  background: rgba(52, 152, 219, 0.05);
+}
+
+.icone-notificacao {
+  font-size: 1.3rem;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(52, 152, 219, 0.1);
+  border-radius: 50%;
+}
+
+.conteudo-notificacao {
+  flex: 1;
+  min-width: 0;
+}
+
+.cabecalho-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--espacamento-sm);
+  margin-bottom: var(--espacamento-xs);
+}
+
+.titulo-item {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--cor-texto);
+  margin: 0;
+  line-height: 1.3;
+  flex: 1;
+}
+
+.meta-notificacao {
+  display: flex;
+  align-items: center;
+  gap: var(--espacamento-xs);
+  flex-shrink: 0;
+}
+
+.tempo-notificacao {
+  font-size: 0.8rem;
+  color: var(--cor-texto-secundario);
+  white-space: nowrap;
+}
+
+.indicador-nao-lida {
+  color: var(--cor-acento);
+  font-size: 0.6rem;
+  margin-left: var(--espacamento-xs);
+}
+
+.mensagem-notificacao {
+  font-size: 0.9rem;
+  color: var(--cor-texto-secundario);
+  line-height: 1.4;
+  margin: 0 0 var(--espacamento-sm) 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rodape-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--espacamento-sm);
+}
+
+.origem-notificacao {
+  font-size: 0.8rem;
+  color: var(--cor-texto-claro);
+  font-weight: 500;
+}
+
+.acoes-item {
+  display: flex;
+  gap: var(--espacamento-xs);
+  opacity: 0;
+  transition: var(--transicao-rapida);
+}
+
+.item-notificacao:hover .acoes-item {
+  opacity: 1;
+}
+
+.btn-marcar-lida,
+.btn-excluir-notif {
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: var(--espacamento-xs);
+  border-radius: var(--raio-borda);
+  transition: var(--transicao-rapida);
+}
+
+.btn-marcar-lida:hover {
+  background: rgba(52, 152, 219, 0.1);
+}
+
+.btn-excluir-notif:hover {
+  background: rgba(231, 76, 60, 0.1);
+}
+
+/* Estados vazios */
+.sem-notificacoes {
+  text-align: center;
+  padding: var(--espacamento-xl);
+  color: var(--cor-texto-secundario);
+}
+
+.icone-vazio {
+  font-size: 3rem;
+  opacity: 0.5;
+  display: block;
+  margin-bottom: var(--espacamento-md);
+}
+
+.sem-notificacoes p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.carregando-notificacoes {
+  padding: var(--espacamento-xl);
+  text-align: center;
+}
+
+/* Rodapé */
+.rodape-notificacoes {
+  padding: var(--espacamento-md);
+  border-top: 1px solid var(--cor-borda);
+  background: var(--cor-fundo);
+  text-align: center;
+}
+
+.btn-ver-todas {
+  background: none;
+  border: 1px solid var(--cor-borda);
+  color: var(--cor-acento);
+  padding: var(--espacamento-sm) var(--espacamento-md);
+  border-radius: var(--raio-borda);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transicao-rapida);
+  width: 100%;
+}
+
+.btn-ver-todas:hover {
+  background: var(--cor-acento);
+  color: var(--cor-branco);
+  border-color: var(--cor-acento);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .dropdown-notificacoes {
+    width: 320px;
+    right: -20px;
+  }
+  
+  .cabecalho-notificacoes {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--espacamento-sm);
+  }
+  
+  .acoes-notificacoes {
+    justify-content: space-between;
+  }
+  
+  .item-notificacao {
+    padding: var(--espacamento-sm);
+    gap: var(--espacamento-sm);
+  }
+  
+  .icone-notificacao {
+    width: 28px;
+    height: 28px;
+    font-size: 1.1rem;
+  }
+  
+  .titulo-item {
+    font-size: 0.9rem;
+  }
+  
+  .mensagem-notificacao {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .dropdown-notificacoes {
+    width: 280px;
+    right: -40px;
+  }
+  
+  .cabecalho-notificacoes {
+    padding: var(--espacamento-sm);
+  }
+  
+  .filtros-notificacoes {
+    flex-direction: column;
+  }
+  
+  .filtro-btn {
+    padding: var(--espacamento-sm);
+    text-align: left;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  .filtro-btn:last-child {
+    border-bottom: none;
+  }
+  
+  .filtro-btn.ativo::after {
+    top: 0;
+    bottom: auto;
+    height: 100%;
+    width: 3px;
+    right: auto;
+  }
+}
+
+/* Animações especiais */
+.item-notificacao.nova {
+  animation: novaNotificacao 0.5s ease-out;
+}
+
+@keyframes novaNotificacao {
+  0% {
+    background: rgba(52, 152, 219, 0.2);
+    transform: translateX(10px);
+  }
+  100% {
+    background: rgba(52, 152, 219, 0.03);
+    transform: translateX(0);
+  }
+}
+
+/* Melhorias de acessibilidade */
+.item-notificacao:focus {
+  outline: 2px solid var(--cor-acento);
+  outline-offset: -2px;
+}
+
+.filtro-btn:focus,
+.btn-acao-notif:focus,
+.btn-fechar-notif:focus,
+.btn-marcar-lida:focus,
+.btn-excluir-notif:focus {
+  outline: 2px solid var(--cor-acento);
+  outline-offset: 2px;
+}

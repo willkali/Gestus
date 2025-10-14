@@ -1,0 +1,135 @@
+/* Paginação */
+.paginacao {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.resumo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.controles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-nav {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+}
+
+.btn-nav:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.btn-nav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lista-paginas {
+  display: flex;
+  gap: 4px;
+  margin: 0 8px;
+}
+
+.btn-pagina {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-pagina:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.btn-pagina.ativa {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.btn-pagina.ativa:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .paginacao {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .resumo {
+    text-align: center;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  
+  .controles {
+    justify-content: center;
+  }
+  
+  .btn-nav,
+  .btn-pagina {
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .paginacao {
+    padding: 12px 0;
+  }
+  
+  .controles {
+    gap: 2px;
+  }
+  
+  .lista-paginas {
+    margin: 0 4px;
+    gap: 2px;
+  }
+  
+  .btn-nav,
+  .btn-pagina {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    min-width: 32px;
+  }
+  
+  .resumo {
+    font-size: 0.8rem;
+  }
+}

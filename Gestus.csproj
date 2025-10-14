@@ -72,7 +72,7 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
   </ItemGroup>
 
-  <!-- Excluir projeto WPF do build deste projeto Web -->
+  <!-- Excluir projetos que não devem ser incluídos -->
   <ItemGroup>
     <Compile Remove="Gestus.Wpf\**\*.cs" />
     <None Remove="Gestus.Wpf\**\*" />
@@ -80,5 +80,11 @@
     <EmbeddedResource Remove="Gestus.Wpf\**\*" />
     <Resource Remove="Gestus.Wpf\**\*" />
     <Page Remove="Gestus.Wpf\**\*.xaml" />
+
+    <!-- Excluir pasta de testes -->
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="tests\**\*" />
+    <Content Remove="tests\**\*" />
+    <EmbeddedResource Remove="tests\**\*" />
   </ItemGroup>
 </Project>

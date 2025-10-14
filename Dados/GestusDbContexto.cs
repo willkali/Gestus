@@ -25,6 +25,7 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
     public DbSet<TemplateEmailPersonalizado> TemplatesEmailPersonalizados => Set<TemplateEmailPersonalizado>();
     public DbSet<ChaveEncriptacao> ChavesEncriptacao => Set<ChaveEncriptacao>();
     public DbSet<LogUsoChave> LogsUsoChave => Set<LogUsoChave>();
+    public DbSet<Notificacao> Notificacoes => Set<Notificacao>();
 
     // ✅ ADICIONAR: DbSets para aplicações
     public DbSet<TipoAplicacao> TiposAplicacao => Set<TipoAplicacao>();
@@ -145,6 +146,32 @@ public class GestusDbContexto : IdentityDbContext<Usuario, Papel, int, IdentityU
             entity.Property(e => e.DadosDepois)
                   .HasColumnType("text")
                   .IsRequired(false);
+        });
+
+        // Configuração da Notificacao
+        builder.Entity<Notificacao>(entity =>
+        {
+            entity.ToTable("Notificacoes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Titulo).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Mensagem).HasMaxLength(1000).IsRequired();
+            entity.Property(e => e.Tipo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Icone).HasMaxLength(50);
+            entity.Property(e => e.Cor).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Origem).HasMaxLength(100);
+            entity.Property(e => e.DadosAdicionais).HasColumnType("text");
+            entity.Property(e => e.DataCriacao).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            
+            entity.HasIndex(e => e.UsuarioId);
+            entity.HasIndex(e => new { e.UsuarioId, e.Lida });
+            entity.HasIndex(e => e.DataCriacao);
+            entity.HasIndex(e => e.Tipo);
+            entity.HasIndex(e => e.Prioridade);
+            
+            entity.HasOne(e => e.Usuario)
+                  .WithMany()
+                  .HasForeignKey(e => e.UsuarioId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

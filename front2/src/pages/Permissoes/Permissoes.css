@@ -1,0 +1,411 @@
+/* Página de Permissões */
+.pagina-permissoes {
+  padding: var(--espacamento-lg);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Cabeçalho da página */
+.cabecalho-pagina {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--espacamento-lg);
+  flex-wrap: wrap;
+  gap: var(--espacamento-md);
+}
+
+.titulo-secao h1 {
+  font-size: 2rem;
+  color: var(--cor-texto);
+  margin-bottom: var(--espacamento-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--espacamento-sm);
+}
+
+.titulo-secao p {
+  color: var(--cor-texto-secundario);
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* Estatísticas */
+.estatisticas-permissoes {
+  display: flex;
+  gap: var(--espacamento-md);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--espacamento-md);
+  background: var(--cor-branco);
+  border-radius: var(--raio-borda);
+  box-shadow: var(--sombra-suave);
+  min-width: 80px;
+}
+
+.stat-numero {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--cor-acento);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+  margin-top: var(--espacamento-xs);
+}
+
+/* Filtros */
+.filtros-permissoes {
+  margin-bottom: var(--espacamento-lg);
+}
+
+.row-filtros {
+  display: grid;
+  grid-template-columns: 1fr 200px auto;
+  gap: var(--espacamento-md);
+  align-items: end;
+}
+
+.campo-filtro {
+  display: flex;
+  flex-direction: column;
+}
+
+.input-busca,
+.select-filtro {
+  padding: var(--espacamento-sm) var(--espacamento-md);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-borda);
+  font-size: 0.95rem;
+  background: var(--cor-branco);
+  transition: var(--transicao-rapida);
+}
+
+.input-busca:focus,
+.select-filtro:focus {
+  outline: none;
+  border-color: var(--cor-acento);
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.acoes-filtro {
+  display: flex;
+  gap: var(--espacamento-sm);
+}
+
+.btn-neutro {
+  background-color: var(--cor-fundo-escuro);
+  color: var(--cor-texto);
+  border: 1px solid var(--cor-borda);
+}
+
+.btn-neutro:hover {
+  background-color: #dee2e6;
+}
+
+/* Permissões agrupadas */
+.permissoes-agrupadas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacamento-xl);
+}
+
+.grupo-categoria {
+  background: var(--cor-fundo);
+  border-radius: var(--raio-borda-grande);
+  padding: var(--espacamento-lg);
+  border: 1px solid var(--cor-borda);
+}
+
+.cabecalho-categoria {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--espacamento-lg);
+  padding-bottom: var(--espacamento-md);
+  border-bottom: 2px solid var(--cor-borda);
+}
+
+.titulo-categoria {
+  font-size: 1.4rem;
+  color: var(--cor-texto);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--espacamento-sm);
+}
+
+.contador-categoria {
+  background: var(--cor-acento);
+  color: var(--cor-branco);
+  padding: var(--espacamento-xs) var(--espacamento-sm);
+  border-radius: 15px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Grid de permissões */
+.grid-permissoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--espacamento-md);
+}
+
+.card-permissao {
+  background: var(--cor-branco);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-borda);
+  padding: var(--espacamento-md);
+  transition: var(--transicao-rapida);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-permissao:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sombra-media);
+  border-color: var(--cor-acento);
+}
+
+/* Cabeçalho da permissão */
+.cabecalho-permissao {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--espacamento-md);
+  margin-bottom: var(--espacamento-md);
+}
+
+.icone-permissao {
+  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--cor-acento), #2980b9);
+  color: var(--cor-branco);
+  border-radius: var(--raio-borda);
+  flex-shrink: 0;
+}
+
+.info-permissao {
+  flex: 1;
+  min-width: 0;
+}
+
+.nome-permissao {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--cor-texto);
+  margin: 0 0 var(--espacamento-xs) 0;
+  line-height: 1.3;
+}
+
+.descricao-permissao {
+  font-size: 0.9rem;
+  color: var(--cor-texto-secundario);
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Detalhes da permissão */
+.detalhes-permissao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacamento-sm);
+  margin-bottom: var(--espacamento-md);
+}
+
+.detalhe-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--espacamento-xs) 0;
+}
+
+.label-detalhe {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--cor-texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.valor-detalhe {
+  font-size: 0.9rem;
+  color: var(--cor-texto);
+  font-weight: 500;
+}
+
+.badge-acao {
+  background: var(--cor-sucesso);
+  color: var(--cor-branco);
+  padding: var(--espacamento-xs) var(--espacamento-sm);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Dependências */
+.dependencias-permissao {
+  border-top: 1px solid var(--cor-borda);
+  padding-top: var(--espacamento-md);
+}
+
+.label-dependencias {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--cor-texto-secundario);
+  margin-bottom: var(--espacamento-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lista-dependencias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacamento-xs);
+}
+
+.badge-dependencia {
+  background: var(--cor-aviso);
+  color: var(--cor-branco);
+  padding: var(--espacamento-xs) var(--espacamento-sm);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Página sem permissão */
+.pagina-sem-permissao {
+  text-align: center;
+  padding: var(--espacamento-xl);
+  background: var(--cor-branco);
+  border-radius: var(--raio-borda);
+  box-shadow: var(--sombra-suave);
+  margin: var(--espacamento-lg) auto;
+  max-width: 500px;
+}
+
+.pagina-sem-permissao h2 {
+  color: var(--cor-erro);
+  margin-bottom: var(--espacamento-md);
+}
+
+.pagina-sem-permissao p {
+  color: var(--cor-texto-secundario);
+  margin: 0;
+}
+
+/* Estado sem dados */
+.sem-dados {
+  text-align: center;
+  padding: var(--espacamento-xl);
+}
+
+.icone-vazio {
+  font-size: 4rem;
+  opacity: 0.3;
+  display: block;
+  margin-bottom: var(--espacamento-md);
+}
+
+.sem-dados h3 {
+  color: var(--cor-texto);
+  margin-bottom: var(--espacamento-sm);
+}
+
+.sem-dados p {
+  color: var(--cor-texto-secundario);
+  margin: 0;
+}
+
+/* Responsividade */
+@media (max-width: 1024px) {
+  .pagina-permissoes {
+    padding: var(--espacamento-md);
+  }
+  
+  .cabecalho-pagina {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .estatisticas-permissoes {
+    justify-content: center;
+  }
+  
+  .row-filtros {
+    grid-template-columns: 1fr;
+    gap: var(--espacamento-md);
+  }
+  
+  .acoes-filtro {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .titulo-secao h1 {
+    font-size: 1.6rem;
+  }
+  
+  .grid-permissoes {
+    grid-template-columns: 1fr;
+  }
+  
+  .cabecalho-categoria {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--espacamento-sm);
+  }
+  
+  .titulo-categoria {
+    font-size: 1.2rem;
+  }
+  
+  .estatisticas-permissoes {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .pagina-permissoes {
+    padding: var(--espacamento-sm);
+  }
+  
+  .grupo-categoria {
+    padding: var(--espacamento-md);
+  }
+  
+  .card-permissao {
+    padding: var(--espacamento-sm);
+  }
+  
+  .cabecalho-permissao {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--espacamento-sm);
+  }
+  
+  .icone-permissao {
+    width: 50px;
+    height: 50px;
+    font-size: 1.8rem;
+  }
+}

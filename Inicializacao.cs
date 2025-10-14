@@ -39,12 +39,13 @@ public static class Inicializacao
         // ADICIONAR: Serviços personalizados
         services.AddSingleton<ITimezoneService, TimezoneService>();
         services.AddScoped<IArquivoService, ArquivoService>();
-        services.AddScoped<UsuarioLoginService>();
+        services.AddScoped<IUsuarioLoginService, UsuarioLoginService>();
 
         // SERVIÇOS DE CRIPTOGRAFIA E EMAIL
         services.AddScoped<IChaveVersaoService, ChaveVersaoService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ITemplateService, TemplateService>();
+        services.AddScoped<INotificacaoService, NotificacaoService>();
 
         // Controllers e API
         services.AddControllers()

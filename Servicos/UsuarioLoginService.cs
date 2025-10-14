@@ -9,7 +9,7 @@ namespace Gestus.Services;
 /// <summary>
 /// Serviço para gerenciar eventos de login e auditar tentativas
 /// </summary>
-public class UsuarioLoginService
+public class UsuarioLoginService : IUsuarioLoginService
 {
     private readonly UserManager<Usuario> _userManager;
     private readonly GestusDbContexto _context;

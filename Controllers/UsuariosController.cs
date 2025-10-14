@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using OpenIddict.Abstractions;
 using Gestus.Modelos;
 using Gestus.Dados;
@@ -222,6 +224,66 @@ public class UsuariosController : ControllerBase
     }
 
     /// <summary>
+    /// Gera uma senha temporária segura para novos usuários
+    /// </summary>
+    /// <param name="comprimento">Comprimento da senha (padrão: 10)</param>
+    /// <returns>Senha temporária gerada</returns>
+    private string GerarSenhaTemporaria(int comprimento = 10)
+    {
+        const string minusculas = "abcdefghijklmnopqrstuvwxyz";
+        const string maiusculas = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const string numeros = "0123456789";
+        const string especiais = "!@#$%&*+-=";
+        
+        var todosCaracteres = minusculas + maiusculas + numeros + especiais;
+        var senha = new StringBuilder();
+        
+        using var rng = RandomNumberGenerator.Create();
+        
+        // Garantir pelo menos um de cada tipo
+        senha.Append(ObterCaractereAleatorio(minusculas, rng));
+        senha.Append(ObterCaractereAleatorio(maiusculas, rng));
+        senha.Append(ObterCaractereAleatorio(numeros, rng));
+        senha.Append(ObterCaractereAleatorio(especiais, rng));
+        
+        // Preencher o restante
+        for (int i = 4; i < comprimento; i++)
+        {
+            senha.Append(ObterCaractereAleatorio(todosCaracteres, rng));
+        }
+        
+        // Embaralhar a senha
+        return EmbaralharString(senha.ToString(), rng);
+    }
+    
+    /// <summary>
+    /// Obtém um caractere aleatório de uma string
+    /// </summary>
+    private static char ObterCaractereAleatorio(string caracteres, RandomNumberGenerator rng)
+    {
+        var bytes = new byte[4];
+        rng.GetBytes(bytes);
+        var valor = BitConverter.ToUInt32(bytes, 0);
+        return caracteres[(int)(valor % caracteres.Length)];
+    }
+    
+    /// <summary>
+    /// Embaralha os caracteres de uma string
+    /// </summary>
+    private static string EmbaralharString(string input, RandomNumberGenerator rng)
+    {
+        var array = input.ToCharArray();
+        for (int i = array.Length - 1; i > 0; i--)
+        {
+            var bytes = new byte[4];
+            rng.GetBytes(bytes);
+            var j = (int)(BitConverter.ToUInt32(bytes, 0) % (i + 1));
+            (array[i], array[j]) = (array[j], array[i]);
+        }
+        return new string(array);
+    }
+
+    /// <summary>
     /// Cria um novo usuário no sistema
     /// </summary>
     /// <param name="request">Dados do novo usuário</param>
@@ -265,6 +327,24 @@ public class UsuariosController : ControllerBase
                 });
             }
 
+            // 🔑 Determinar senha a ser usada
+            string senhaParaUsar;
+            bool senhaFoiGerada = false;
+            
+            if (request.EnviarSenhaEmail)
+            {
+                // Gerar senha temporária automaticamente
+                senhaParaUsar = GerarSenhaTemporaria();
+                senhaFoiGerada = true;
+                _logger.LogInformation("🔑 Senha temporária gerada para {Email}", request.Email);
+            }
+            else
+            {
+                // Usar senha fornecida pelo usuário
+                senhaParaUsar = request.Senha!;
+                _logger.LogInformation("🔑 Usando senha fornecida para {Email}", request.Email);
+            }
+
             // Criar usuário
             var usuario = new Usuario
             {
@@ -281,7 +361,7 @@ public class UsuariosController : ControllerBase
                 Observacoes = request.Observacoes
             };
 
-            var resultado = await _userManager.CreateAsync(usuario, request.Senha);
+            var resultado = await _userManager.CreateAsync(usuario, senhaParaUsar);
             if (!resultado.Succeeded)
             {
                 return BadRequest(new RespostaErro
@@ -307,29 +387,50 @@ public class UsuariosController : ControllerBase
                 }
             }
 
-            // ✅ DECLARAR VARIÁVEL FORA DO TRY PARA USAR NA AUDITORIA
+            // ✅ DECLARAR VARIÁVEIS FORA DO TRY PARA USAR NA AUDITORIA
             bool emailEnviado = false;
+            string tipoEmail = senhaFoiGerada ? "com senha temporária" : "de boas-vindas";
 
-            // ✅ ENVIO DE EMAIL DE BOAS-VINDAS
+            // ✅ ENVIO DE EMAIL (BOAS-VINDAS OU COM SENHA)
             try
             {
-                emailEnviado = await _emailService.EnviarEmailBoasVindasAsync(
-                    emailDestino: usuario.Email!,
-                    nomeUsuario: usuario.Nome
-                );
-
-                if (emailEnviado)
+                if (senhaFoiGerada && request.EnviarSenhaEmail)
                 {
-                    _logger.LogInformation("✅ Email de boas-vindas enviado para {Email}", usuario.Email);
+                    // Enviar email com senha temporária
+                    var variaveis = new Dictionary<string, string>
+                    {
+                        { "nomeUsuario", usuario.Nome },
+                        { "email", usuario.Email! },
+                        { "senhaTemporaria", senhaParaUsar },
+                        { "dataGeracao", DateTime.Now.ToString("dd/MM/yyyy HH:mm") }
+                    };
+                    
+                    var corpoEmail = await _emailService.GerarCorpoEmailAsync("senha-temporaria", variaveis);
+                    var assunto = "🔐 Gestus - Sua senha temporária";
+                    
+                    emailEnviado = await _emailService.EnviarEmailAsync(usuario.Email!, assunto, corpoEmail, true);
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Falha ao enviar email de boas-vindas para {Email}", usuario.Email);
+                    // Enviar email de boas-vindas normal
+                    emailEnviado = await _emailService.EnviarEmailBoasVindasAsync(
+                        emailDestino: usuario.Email!,
+                        nomeUsuario: usuario.Nome
+                    );
+                }
+
+                if (emailEnviado)
+                {
+                    _logger.LogInformation("✅ Email {TipoEmail} enviado para {Email}", tipoEmail, usuario.Email);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Falha ao enviar email {TipoEmail} para {Email}", tipoEmail, usuario.Email);
                 }
             }
             catch (Exception emailEx)
             {
-                _logger.LogError(emailEx, "❌ Erro ao enviar email de boas-vindas para {Email}", usuario.Email);
+                _logger.LogError(emailEx, "❌ Erro ao enviar email {TipoEmail} para {Email}", tipoEmail, usuario.Email);
                 // Não falha a criação do usuário por causa do email
                 emailEnviado = false;
             }
@@ -348,7 +449,9 @@ public class UsuariosController : ControllerBase
                     usuario.Nome,
                     usuario.Sobrenome,
                     Papeis = request.Papeis,
-                    EmailEnviado = emailEnviado // ✅ AGORA A VARIÁVEL ESTÁ NO ESCOPO CORRETO
+                    EmailEnviado = emailEnviado,
+                    SenhaGeradaAutomaticamente = senhaFoiGerada,
+                    TipoEmail = tipoEmail
                 }
             );
 
@@ -716,6 +819,121 @@ public class UsuariosController : ControllerBase
             {
                 Erro = "ErroInterno",
                 Mensagem = $"Erro interno ao {(exclusaoPermanente ? "excluir" : "desativar")} usuário"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Gera uma nova senha temporária para um usuário existente
+    /// </summary>
+    /// <param name="id">ID do usuário</param>
+    /// <param name="enviarPorEmail">Se deve enviar a nova senha por email</param>
+    /// <returns>Confirmação da geração</returns>
+    [HttpPost("{id:int}/gerar-senha-temporaria")]
+    [ProducesResponseType(typeof(RespostaSucesso), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(RespostaErro), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GerarNovaSenhaTemporaria(int id, [FromQuery] bool enviarPorEmail = true)
+    {
+        try
+        {
+            if (!TemPermissao("Usuarios.GerenciarSenhas"))
+            {
+                return Forbid("Permissão insuficiente para gerenciar senhas de usuários");
+            }
+
+            var usuarioLogadoId = ObterUsuarioLogadoId();
+            _logger.LogInformation("🔄 Gerando nova senha temporária para usuário ID: {Id} - Solicitado por: {UsuarioLogadoId}",
+                id, usuarioLogadoId);
+
+            var usuario = await _userManager.FindByIdAsync(id.ToString());
+            if (usuario == null)
+            {
+                return NotFound(new RespostaErro
+                {
+                    Erro = "UsuarioNaoEncontrado",
+                    Mensagem = "Usuário não encontrado"
+                });
+            }
+
+            // Gerar nova senha temporária
+            var novaSenha = GerarSenhaTemporaria();
+
+            // Resetar senha do usuário
+            var token = await _userManager.GeneratePasswordResetTokenAsync(usuario);
+            var resultado = await _userManager.ResetPasswordAsync(usuario, token, novaSenha);
+
+            if (!resultado.Succeeded)
+            {
+                return BadRequest(new RespostaErro
+                {
+                    Erro = "ErroResetSenha",
+                    Mensagem = "Erro ao definir nova senha temporária",
+                    Detalhes = resultado.Errors.Select(e => e.Description).ToList()
+                });
+            }
+
+            bool emailEnviado = false;
+            
+            // Enviar por email se solicitado
+            if (enviarPorEmail)
+            {
+                try
+                {
+                    var variaveis = new Dictionary<string, string>
+                    {
+                        { "nomeUsuario", usuario.Nome },
+                        { "email", usuario.Email! },
+                        { "senhaTemporaria", novaSenha },
+                        { "dataGeracao", DateTime.Now.ToString("dd/MM/yyyy HH:mm") }
+                    };
+                    
+                    var corpoEmail = await _emailService.GerarCorpoEmailAsync("nova-senha-temporaria", variaveis);
+                    var assunto = "🔐 Gestus - Nova senha temporária";
+                    
+                    emailEnviado = await _emailService.EnviarEmailAsync(usuario.Email!, assunto, corpoEmail, true);
+                    
+                    if (emailEnviado)
+                    {
+                        _logger.LogInformation("✅ Nova senha temporária enviada por email para {Email}", usuario.Email);
+                    }
+                }
+                catch (Exception emailEx)
+                {
+                    _logger.LogError(emailEx, "❌ Erro ao enviar nova senha temporária por email para {Email}", usuario.Email);
+                }
+            }
+
+            // Registrar auditoria
+            await RegistrarAuditoria("Usuarios.GerarSenhaTemporaria", "Usuarios", id.ToString(),
+                $"Nova senha temporária gerada para usuário: {usuario.Email}",
+                dadosDepois: new
+                {
+                    EmailEnviado = emailEnviado,
+                    DataGeracao = DateTime.UtcNow
+                });
+
+            var mensagem = emailEnviado 
+                ? "Nova senha temporária gerada e enviada por email com sucesso" 
+                : "Nova senha temporária gerada com sucesso. Lembre-se de compartilhar com o usuário.";
+
+            _logger.LogInformation("✅ Nova senha temporária gerada - ID: {Id}, Email: {Email}, EmailEnviado: {EmailEnviado}",
+                id, usuario.Email, emailEnviado);
+
+            return Ok(new RespostaSucesso
+            {
+                Sucesso = true,
+                Mensagem = mensagem
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Erro ao gerar nova senha temporária para usuário ID: {Id}", id);
+            return StatusCode(500, new RespostaErro
+            {
+                Erro = "ErroInterno",
+                Mensagem = "Erro interno ao gerar nova senha temporária"
             });
         }
     }

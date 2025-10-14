@@ -1,0 +1,207 @@
+/* Estado de Carregamento */
+.estado-carregamento {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--espacamento-md);
+}
+
+.estado-carregamento.centralizado {
+  min-height: 200px;
+  width: 100%;
+}
+
+/* Mensagem de carregamento */
+.mensagem-carregamento {
+  color: var(--cor-texto-secundario);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ===== SPINNER GIRATÓRIO ===== */
+.carregamento-giratorio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.circulo-giratorio {
+  border-radius: 50%;
+  animation: girar 1s linear infinite;
+}
+
+/* Tamanhos do spinner giratório */
+.carregamento-giratorio.pequeno .circulo-giratorio {
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+}
+
+.carregamento-giratorio.medio .circulo-giratorio {
+  width: 32px;
+  height: 32px;
+  border: 3px solid transparent;
+}
+
+.carregamento-giratorio.grande .circulo-giratorio {
+  width: 48px;
+  height: 48px;
+  border: 4px solid transparent;
+}
+
+/* Cores do spinner */
+.carregamento-giratorio.primaria .circulo-giratorio {
+  border-top-color: var(--cor-acento);
+  border-right-color: rgba(52, 152, 219, 0.2);
+}
+
+.carregamento-giratorio.secundaria .circulo-giratorio {
+  border-top-color: var(--cor-texto-secundario);
+  border-right-color: rgba(108, 117, 125, 0.2);
+}
+
+.carregamento-giratorio.branca .circulo-giratorio {
+  border-top-color: var(--cor-branco);
+  border-right-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Animação de rotação */
+@keyframes girar {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ===== ESQUELETO DE CARREGAMENTO ===== */
+.carregamento-esqueleto {
+  width: 100%;
+  max-width: 400px;
+}
+
+.linha-esqueleto {
+  margin-bottom: var(--espacamento-sm);
+}
+
+.item-esqueleto {
+  height: 16px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: brilhando 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes brilhando {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ===== PONTOS ANIMADOS ===== */
+.carregamento-pontos {
+  display: flex;
+  align-items: center;
+  gap: var(--espacamento-xs);
+}
+
+.carregamento-pontos .ponto {
+  border-radius: 50%;
+  animation: pulsando 1.4s infinite ease-in-out both;
+}
+
+.carregamento-pontos .ponto:nth-child(1) { animation-delay: -0.32s; }
+.carregamento-pontos .ponto:nth-child(2) { animation-delay: -0.16s; }
+
+/* Tamanhos dos pontos */
+.carregamento-pontos.pequeno .ponto {
+  width: 6px;
+  height: 6px;
+}
+
+.carregamento-pontos.medio .ponto {
+  width: 10px;
+  height: 10px;
+}
+
+.carregamento-pontos.grande .ponto {
+  width: 16px;
+  height: 16px;
+}
+
+/* Cores dos pontos */
+.carregamento-pontos.primaria .ponto {
+  background-color: var(--cor-acento);
+}
+
+.carregamento-pontos.secundaria .ponto {
+  background-color: var(--cor-texto-secundario);
+}
+
+.carregamento-pontos.branca .ponto {
+  background-color: var(--cor-branco);
+}
+
+@keyframes pulsando {
+  0%, 80%, 100% { 
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% { 
+    transform: scale(1.0);
+    opacity: 1;
+  }
+}
+
+/* ===== BARRAS ANIMADAS ===== */
+.carregamento-barras {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.carregamento-barras .barra {
+  animation: crescendo 1.2s infinite ease-in-out;
+}
+
+.carregamento-barras .barra:nth-child(1) { animation-delay: -1.1s; }
+.carregamento-barras .barra:nth-child(2) { animation-delay: -1.0s; }
+.carregamento-barras .barra:nth-child(3) { animation-delay: -0.9s; }
+.carregamento-barras .barra:nth-child(4) { animation-delay: -0.8s; }
+
+/* Tamanhos das barras */
+.carregamento-barras.pequeno .barra {
+  width: 3px;
+  height: 20px;
+}
+
+.carregamento-barras.medio .barra {
+  width: 4px;
+  height: 32px;
+}
+
+.carregamento-barras.grande .barra {
+  width: 6px;
+  height: 48px;
+}
+
+/* Cores das barras */
+.carregamento-barras.primaria .barra {
+  background-color: var(--cor-acento);
+}
+
+.carregamento-barras.secundaria .barra {
+  background-color: var(--cor-texto-secundario);
+}
+
+.carregamento-barras.branca .barra {
+  background-color: var(--cor-branco);
+}
+
+@keyframes crescendo {
+  0%, 40%, 100% { 
+    transform: scaleY(0.4);
+    opacity: 0.5;
+  }
+  20% { 
+    transform: scaleY(1.0);
+    opacity: 1;
+  }
+}

@@ -1,0 +1,388 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="a81e3b3e-d090-4a37-9ca1-8bdd9e805aa6" name="willian.cavalcante@MICRO302 2025-10-13 07:57:52" runUser="SKYMSEN\willian.cavalcante" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2025-10-13T07:57:52.3220001-03:00" queuing="2025-10-13T07:57:52.3220005-03:00" start="2025-10-13T07:57:47.0194126-03:00" finish="2025-10-13T07:57:54.3251056-03:00" />
+  <TestSettings name="default" id="932cf1eb-82cf-4770-b365-2e232d89791c">
+    <Deployment runDeploymentRoot="willian.cavalcante_MICRO302_2025-10-13_07_57_52" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="b5dbf04f-f0b9-4f06-88bd-9c50c5b068fc" testId="d8e1807c-fc52-1031-e8ff-f74b0aabb617" testName="Login_ComSenhaIncorreta_DeveRetornarUnauthorizedComContador" computerName="MICRO302" duration="00:00:00.0024160" startTime="2025-10-13T07:57:52.2890334-03:00" endTime="2025-10-13T07:57:52.2914491-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b5dbf04f-f0b9-4f06-88bd-9c50c5b068fc" />
+    <UnitTestResult executionId="dab271d9-ae35-4f20-a885-8b778ff69649" testId="1b886509-a511-8697-4334-724b90661321" testName="Login_ComEmailInvalido_DeveRetornarBadRequest" computerName="MICRO302" duration="00:00:00.0171359" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892260-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="dab271d9-ae35-4f20-a885-8b778ff69649">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="d798a54e-d938-4575-b8ca-41c5f5f365b8" testId="b6760048-2306-50ee-affd-a228a5efe2ee" testName="CriarUsuarioComRoles_DeveAssociarRolesCorretamente" computerName="MICRO302" duration="00:00:00.1614080" startTime="2025-10-13T07:57:53.5662234-03:00" endTime="2025-10-13T07:57:53.7276306-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d798a54e-d938-4575-b8ca-41c5f5f365b8" />
+    <UnitTestResult executionId="565d1811-5245-4e61-8624-7b9cca3d0c67" testId="301c44f1-d91d-aa3f-2974-2e6946feb190" testName="CriarUsuario_DeveSerCriadoCorretamente" computerName="MICRO302" duration="00:00:01.1766030" startTime="2025-10-13T07:57:52.3895821-03:00" endTime="2025-10-13T07:57:53.5661851-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="565d1811-5245-4e61-8624-7b9cca3d0c67" />
+    <UnitTestResult executionId="9f0dc666-9429-4995-85d1-5b7c2ef14136" testId="d0f9d652-0e28-a9ce-4aa6-bb80f80c2636" testName="Login_ComDadosInvalidos_DeveRetornarBadRequest" computerName="MICRO302" duration="00:00:00.0122220" startTime="2025-10-13T07:57:52.2706281-03:00" endTime="2025-10-13T07:57:52.2828498-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9f0dc666-9429-4995-85d1-5b7c2ef14136" />
+    <UnitTestResult executionId="5db2b7fc-049b-4ebd-a556-40e3f2f5af3b" testId="1530230f-1d8e-b6f0-97b4-ffa4a10326bd" testName="Refresh_ComTokenValido_DeveRetornarNovoToken" computerName="MICRO302" duration="00:00:00.0006790" startTime="2025-10-13T07:57:52.3607060-03:00" endTime="2025-10-13T07:57:52.3613845-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5db2b7fc-049b-4ebd-a556-40e3f2f5af3b" />
+    <UnitTestResult executionId="a2ac9eb6-f07b-4298-ae82-504f896c2efa" testId="94b37c50-a786-2dc3-a3e6-6bf253e32a85" testName="Login_ComEmailInexistente_DeveRetornarUnauthorized" computerName="MICRO302" duration="00:00:00.0171340" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892243-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a2ac9eb6-f07b-4298-ae82-504f896c2efa">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="33dcde82-04ca-41b3-8d2b-c2f12a694fc6" testId="342436cd-df14-e687-5009-52f20d19530a" testName="Login_ComDadosValidosESucessoCompleto_DeveRetornarOkComTokenEEstatisticas" computerName="MICRO302" duration="00:00:00.0171320" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892221-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="33dcde82-04ca-41b3-8d2b-c2f12a694fc6">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="0f3a230e-698f-41bd-b9a1-957e4428b0b0" testId="a11735ef-b381-9cf8-6dab-6561d3c81fa4" testName="Usuario_ConfiguracoesPadrao_DevemEstarCorretas" computerName="MICRO302" duration="00:00:00.0005109" startTime="2025-10-13T07:57:54.2446422-03:00" endTime="2025-10-13T07:57:54.2451528-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0f3a230e-698f-41bd-b9a1-957e4428b0b0" />
+    <UnitTestResult executionId="8f4b2276-4406-4818-b755-58e123e195a5" testId="94a6773b-5cf6-1803-8284-4f6404555315" testName="Usuario_PropriedadesBasicas_DevemFuncionar" computerName="MICRO302" duration="00:00:00.0001780" startTime="2025-10-13T07:57:54.2451741-03:00" endTime="2025-10-13T07:57:54.2453520-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8f4b2276-4406-4818-b755-58e123e195a5" />
+    <UnitTestResult executionId="b3e11e91-a123-405f-88a7-8bb9933545dd" testId="2e52346d-f428-cdda-5b0e-b59dfe792bff" testName="Login_ComDadosValidos_DeveRetornarSucesso" computerName="MICRO302" duration="00:00:00.0049280" startTime="2025-10-13T07:57:52.2828852-03:00" endTime="2025-10-13T07:57:52.2878133-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b3e11e91-a123-405f-88a7-8bb9933545dd" />
+    <UnitTestResult executionId="4a4b6aef-0c91-4ac3-8ff2-68b51b26b18e" testId="c27c0a2b-8236-bedd-02c3-088c9123ff32" testName="Refresh_ComDadosInvalidos_DeveRetornarBadRequest" computerName="MICRO302" duration="00:00:00.0036080" startTime="2025-10-13T07:57:52.3570621-03:00" endTime="2025-10-13T07:57:52.3606694-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4a4b6aef-0c91-4ac3-8ff2-68b51b26b18e" />
+    <UnitTestResult executionId="67a6ae06-e31d-461d-a875-203fa73404f4" testId="d4ed75ba-3657-6106-a8a0-cbcb5383f23f" testName="Login_ComContaBloqueada_DeveRetornarUnauthorizedComTempoRestante" computerName="MICRO302" duration="00:00:04.2167560" startTime="2025-10-13T07:57:48.0529264-03:00" endTime="2025-10-13T07:57:52.2696367-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="67a6ae06-e31d-461d-a875-203fa73404f4">
+      <Output>
+        <StdOut>Warning:&#xD;
+     The component "Fluent Assertions" is governed by the rules defined in the Xceed License Agreement and&#xD;
+     the Xceed Fluent Assertions Community License. You may use Fluent Assertions free of charge for&#xD;
+     non-commercial use only. An active subscription is required to use Fluent Assertions for commercial use.&#xD;
+&#xD;
+     Please contact Xceed Sales mailto:sales@xceed.com to acquire a subscription at a very low cost.&#xD;
+&#xD;
+     A paid commercial license supports the development and continued increasing support of&#xD;
+     Fluent Assertions users under both commercial and community licenses. Help us&#xD;
+     keep Fluent Assertions at the forefront of unit testing.&#xD;
+&#xD;
+     For more information, visit https://xceed.com/products/unit-testing/fluent-assertions/</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="06b0040f-b3fa-46a0-9b6e-4b5b6ff62606" testId="c689715b-8b9f-e1fc-1007-d9df8930133d" testName="Login_ComSenhaVazia_DeveRetornarBadRequest" computerName="MICRO302" duration="00:00:00.0171429" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892334-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="06b0040f-b3fa-46a0-9b6e-4b5b6ff62606">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="f9f21e3f-7a50-431a-8289-b783bf1cb9ad" testId="b4adcc27-f0d7-5b81-cbc4-bd24e0c0d702" testName="Login_ComContaBloqueada_DeveRetornarUnauthorizedComTempoRestante" computerName="MICRO302" duration="00:00:00.0171110" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892013-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f9f21e3f-7a50-431a-8289-b783bf1cb9ad">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="59ebb6ea-8fe3-4f74-a2f9-b2fa6db5361a" testId="730cabf7-2010-72d4-ae58-271be2aec0ee" testName="VerificarEstatisticasUsuario_DeveCalcularCorretamente" computerName="MICRO302" duration="00:00:00.0938870" startTime="2025-10-13T07:57:53.8044822-03:00" endTime="2025-10-13T07:57:53.8983684-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="59ebb6ea-8fe3-4f74-a2f9-b2fa6db5361a" />
+    <UnitTestResult executionId="0720f214-275f-4432-9005-04aa29925155" testId="ec9fbc21-2306-1b97-febb-ad157cdb9569" testName="ObterPerfil_ComTokenSemUsuario_DeveRetornarUnauthorized" computerName="MICRO302" duration="00:00:00.0030940" startTime="2025-10-13T07:57:52.2926303-03:00" endTime="2025-10-13T07:57:52.2957243-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0720f214-275f-4432-9005-04aa29925155" />
+    <UnitTestResult executionId="5ba198aa-a99e-4163-b8ad-c90697ea56b9" testId="b74813dc-2549-b107-9612-d229acbcc1c8" testName="Login_ComExcecaoNoHttpClient_DeveRetornarErroInterno" computerName="MICRO302" duration="00:00:00.0171380" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892276-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5ba198aa-a99e-4163-b8ad-c90697ea56b9">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="a24cb71a-c9d5-4b39-bf25-fe7c79156f6d" testId="62c21ef7-7c0c-bf52-eff9-c753747bb7fc" testName="ValidarToken_ComTokenValido_DeveRetornarInformacoesToken" computerName="MICRO302" duration="00:00:00.0068550" startTime="2025-10-13T07:57:52.3614087-03:00" endTime="2025-10-13T07:57:52.3682630-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a24cb71a-c9d5-4b39-bf25-fe7c79156f6d" />
+    <UnitTestResult executionId="8d5ad672-d65c-4544-ba8d-ca9b194da639" testId="645bd0ca-5226-c88f-ca38-40a4998cd635" testName="Login_ComSenhaIncorreta_DeveRetornarUnauthorizedComContadorTentativas" computerName="MICRO302" duration="00:00:00.0171410" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892318-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8d5ad672-d65c-4544-ba8d-ca9b194da639">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="9c6e9fa3-38f5-4d11-bd4c-5cca2d15eccb" testId="84c540cc-7044-a79b-e411-f72e4d5e10d9" testName="ValidarToken_ComUsuarioInexistente_DeveRetornarUnauthorized" computerName="MICRO302" duration="00:00:00.0019680" startTime="2025-10-13T07:57:52.3682934-03:00" endTime="2025-10-13T07:57:52.3702610-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9c6e9fa3-38f5-4d11-bd4c-5cca2d15eccb" />
+    <UnitTestResult executionId="3eaff679-5d40-47ef-b921-79375cfb5adc" testId="678911ab-7f23-d51d-71f3-093ec70ce587" testName="UsuarioInativo_DeveTerPropriedadeCorreta" computerName="MICRO302" duration="00:00:00.0767780" startTime="2025-10-13T07:57:53.7276706-03:00" endTime="2025-10-13T07:57:53.8044476-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3eaff679-5d40-47ef-b921-79375cfb5adc" />
+    <UnitTestResult executionId="63e583db-d590-40d7-86e9-5d1ff6ead3a6" testId="121b694f-d044-ecab-cc4c-17082e02d50b" testName="ObterPerfil_ComUsuarioValido_DeveRetornarInformacoesUsuario" computerName="MICRO302" duration="00:00:00.0612820" startTime="2025-10-13T07:57:52.2957454-03:00" endTime="2025-10-13T07:57:52.3570268-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="63e583db-d590-40d7-86e9-5d1ff6ead3a6" />
+    <UnitTestResult executionId="e1ffad44-d2dc-4c92-b4df-597c7951927e" testId="5ee89b7e-b477-c3e4-4e5d-252e4fa76839" testName="Login_ComUsuarioInativo_DeveRetornarUnauthorized" computerName="MICRO302" duration="00:00:00.0171450" startTime="2025-10-13T07:57:52.3720902-03:00" endTime="2025-10-13T07:57:52.3892350-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e1ffad44-d2dc-4c92-b4df-597c7951927e">
+      <Output>
+        <ErrorInfo>
+          <Message>OneTimeSetUp: System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.</Message>
+          <StackTrace>   at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="4ed3f31e-3758-497c-9d60-7da358a019b5" testId="0c1c2629-1b98-f4a3-9c2b-d97e0cad5099" testName="CriarUsuario_ComDadosValidos_DeveFuncionar" computerName="MICRO302" duration="00:00:00.0086390" startTime="2025-10-13T07:57:54.2359728-03:00" endTime="2025-10-13T07:57:54.2446116-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4ed3f31e-3758-497c-9d60-7da358a019b5" />
+    <UnitTestResult executionId="79119dae-f397-4c96-bdf7-f78a88bf064d" testId="c2cf51de-66f7-8ac3-ca45-b5e3065cb587" testName="Context_DevePermitirSalvarUsuario" computerName="MICRO302" duration="00:00:00.3373709" startTime="2025-10-13T07:57:53.8985542-03:00" endTime="2025-10-13T07:57:54.2359255-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="79119dae-f397-4c96-bdf7-f78a88bf064d" />
+    <UnitTestResult executionId="d07bf08c-ca09-4ab1-86b8-597fa7b6d5ff" testId="7f204866-ae39-d3fc-9a4c-070f4ce3cef9" testName="Logout_DeveRetornarSucesso" computerName="MICRO302" duration="00:00:00.0011430" startTime="2025-10-13T07:57:52.2914686-03:00" endTime="2025-10-13T07:57:52.2926111-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d07bf08c-ca09-4ab1-86b8-597fa7b6d5ff" />
+    <UnitTestResult executionId="aa00c78f-c38a-4a58-8e46-002c65ef35b6" testId="fc6065de-ced2-d1f1-4017-cb0c615a369b" testName="Login_ComEmailInexistente_DeveRetornarUnauthorized" computerName="MICRO302" duration="00:00:00.0011770" startTime="2025-10-13T07:57:52.2878383-03:00" endTime="2025-10-13T07:57:52.2890156-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aa00c78f-c38a-4a58-8e46-002c65ef35b6" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="ValidarToken_ComTokenValido_DeveRetornarInformacoesToken" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="62c21ef7-7c0c-bf52-eff9-c753747bb7fc">
+      <Execution id="a24cb71a-c9d5-4b39-bf25-fe7c79156f6d" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="ValidarToken_ComTokenValido_DeveRetornarInformacoesToken" />
+    </UnitTest>
+    <UnitTest name="CriarUsuario_ComDadosValidos_DeveFuncionar" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="0c1c2629-1b98-f4a3-9c2b-d97e0cad5099">
+      <Execution id="4ed3f31e-3758-497c-9d60-7da358a019b5" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Modelos.UsuarioTests" name="CriarUsuario_ComDadosValidos_DeveFuncionar" />
+    </UnitTest>
+    <UnitTest name="VerificarEstatisticasUsuario_DeveCalcularCorretamente" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="730cabf7-2010-72d4-ae58-271be2aec0ee">
+      <Execution id="59ebb6ea-8fe3-4f74-a2f9-b2fa6db5361a" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Integration.AutenticacaoControllerIntegrationTests" name="VerificarEstatisticasUsuario_DeveCalcularCorretamente" />
+    </UnitTest>
+    <UnitTest name="Logout_DeveRetornarSucesso" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="7f204866-ae39-d3fc-9a4c-070f4ce3cef9">
+      <Execution id="d07bf08c-ca09-4ab1-86b8-597fa7b6d5ff" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Logout_DeveRetornarSucesso" />
+    </UnitTest>
+    <UnitTest name="Login_ComSenhaIncorreta_DeveRetornarUnauthorizedComContador" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="d8e1807c-fc52-1031-e8ff-f74b0aabb617">
+      <Execution id="b5dbf04f-f0b9-4f06-88bd-9c50c5b068fc" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Login_ComSenhaIncorreta_DeveRetornarUnauthorizedComContador" />
+    </UnitTest>
+    <UnitTest name="Context_DevePermitirSalvarUsuario" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="c2cf51de-66f7-8ac3-ca45-b5e3065cb587">
+      <Execution id="79119dae-f397-4c96-bdf7-f78a88bf064d" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Modelos.UsuarioTests" name="Context_DevePermitirSalvarUsuario" />
+    </UnitTest>
+    <UnitTest name="Login_ComSenhaVazia_DeveRetornarBadRequest" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="c689715b-8b9f-e1fc-1007-d9df8930133d">
+      <Execution id="06b0040f-b3fa-46a0-9b6e-4b5b6ff62606" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComSenhaVazia_DeveRetornarBadRequest" />
+    </UnitTest>
+    <UnitTest name="Login_ComEmailInexistente_DeveRetornarUnauthorized" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="fc6065de-ced2-d1f1-4017-cb0c615a369b">
+      <Execution id="aa00c78f-c38a-4a58-8e46-002c65ef35b6" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Login_ComEmailInexistente_DeveRetornarUnauthorized" />
+    </UnitTest>
+    <UnitTest name="Login_ComUsuarioInativo_DeveRetornarUnauthorized" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="5ee89b7e-b477-c3e4-4e5d-252e4fa76839">
+      <Execution id="e1ffad44-d2dc-4c92-b4df-597c7951927e" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComUsuarioInativo_DeveRetornarUnauthorized" />
+    </UnitTest>
+    <UnitTest name="Refresh_ComDadosInvalidos_DeveRetornarBadRequest" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="c27c0a2b-8236-bedd-02c3-088c9123ff32">
+      <Execution id="4a4b6aef-0c91-4ac3-8ff2-68b51b26b18e" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Refresh_ComDadosInvalidos_DeveRetornarBadRequest" />
+    </UnitTest>
+    <UnitTest name="UsuarioInativo_DeveTerPropriedadeCorreta" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="678911ab-7f23-d51d-71f3-093ec70ce587">
+      <Execution id="3eaff679-5d40-47ef-b921-79375cfb5adc" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Integration.AutenticacaoControllerIntegrationTests" name="UsuarioInativo_DeveTerPropriedadeCorreta" />
+    </UnitTest>
+    <UnitTest name="ObterPerfil_ComUsuarioValido_DeveRetornarInformacoesUsuario" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="121b694f-d044-ecab-cc4c-17082e02d50b">
+      <Execution id="63e583db-d590-40d7-86e9-5d1ff6ead3a6" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="ObterPerfil_ComUsuarioValido_DeveRetornarInformacoesUsuario" />
+    </UnitTest>
+    <UnitTest name="Refresh_ComTokenValido_DeveRetornarNovoToken" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="1530230f-1d8e-b6f0-97b4-ffa4a10326bd">
+      <Execution id="5db2b7fc-049b-4ebd-a556-40e3f2f5af3b" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Refresh_ComTokenValido_DeveRetornarNovoToken" />
+    </UnitTest>
+    <UnitTest name="Login_ComDadosInvalidos_DeveRetornarBadRequest" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="d0f9d652-0e28-a9ce-4aa6-bb80f80c2636">
+      <Execution id="9f0dc666-9429-4995-85d1-5b7c2ef14136" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Login_ComDadosInvalidos_DeveRetornarBadRequest" />
+    </UnitTest>
+    <UnitTest name="Login_ComDadosValidos_DeveRetornarSucesso" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="2e52346d-f428-cdda-5b0e-b59dfe792bff">
+      <Execution id="b3e11e91-a123-405f-88a7-8bb9933545dd" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Login_ComDadosValidos_DeveRetornarSucesso" />
+    </UnitTest>
+    <UnitTest name="Login_ComExcecaoNoHttpClient_DeveRetornarErroInterno" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="b74813dc-2549-b107-9612-d229acbcc1c8">
+      <Execution id="5ba198aa-a99e-4163-b8ad-c90697ea56b9" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComExcecaoNoHttpClient_DeveRetornarErroInterno" />
+    </UnitTest>
+    <UnitTest name="Login_ComEmailInvalido_DeveRetornarBadRequest" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="1b886509-a511-8697-4334-724b90661321">
+      <Execution id="dab271d9-ae35-4f20-a885-8b778ff69649" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComEmailInvalido_DeveRetornarBadRequest" />
+    </UnitTest>
+    <UnitTest name="CriarUsuario_DeveSerCriadoCorretamente" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="301c44f1-d91d-aa3f-2974-2e6946feb190">
+      <Execution id="565d1811-5245-4e61-8624-7b9cca3d0c67" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Integration.AutenticacaoControllerIntegrationTests" name="CriarUsuario_DeveSerCriadoCorretamente" />
+    </UnitTest>
+    <UnitTest name="ValidarToken_ComUsuarioInexistente_DeveRetornarUnauthorized" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="84c540cc-7044-a79b-e411-f72e4d5e10d9">
+      <Execution id="9c6e9fa3-38f5-4d11-bd4c-5cca2d15eccb" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="ValidarToken_ComUsuarioInexistente_DeveRetornarUnauthorized" />
+    </UnitTest>
+    <UnitTest name="Login_ComContaBloqueada_DeveRetornarUnauthorizedComTempoRestante" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="b4adcc27-f0d7-5b81-cbc4-bd24e0c0d702">
+      <Execution id="f9f21e3f-7a50-431a-8289-b783bf1cb9ad" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComContaBloqueada_DeveRetornarUnauthorizedComTempoRestante" />
+    </UnitTest>
+    <UnitTest name="Usuario_ConfiguracoesPadrao_DevemEstarCorretas" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="a11735ef-b381-9cf8-6dab-6561d3c81fa4">
+      <Execution id="0f3a230e-698f-41bd-b9a1-957e4428b0b0" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Modelos.UsuarioTests" name="Usuario_ConfiguracoesPadrao_DevemEstarCorretas" />
+    </UnitTest>
+    <UnitTest name="Login_ComContaBloqueada_DeveRetornarUnauthorizedComTempoRestante" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="d4ed75ba-3657-6106-a8a0-cbcb5383f23f">
+      <Execution id="67a6ae06-e31d-461d-a875-203fa73404f4" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="Login_ComContaBloqueada_DeveRetornarUnauthorizedComTempoRestante" />
+    </UnitTest>
+    <UnitTest name="CriarUsuarioComRoles_DeveAssociarRolesCorretamente" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="b6760048-2306-50ee-affd-a228a5efe2ee">
+      <Execution id="d798a54e-d938-4575-b8ca-41c5f5f365b8" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Integration.AutenticacaoControllerIntegrationTests" name="CriarUsuarioComRoles_DeveAssociarRolesCorretamente" />
+    </UnitTest>
+    <UnitTest name="Usuario_PropriedadesBasicas_DevemFuncionar" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="94a6773b-5cf6-1803-8284-4f6404555315">
+      <Execution id="8f4b2276-4406-4818-b755-58e123e195a5" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Modelos.UsuarioTests" name="Usuario_PropriedadesBasicas_DevemFuncionar" />
+    </UnitTest>
+    <UnitTest name="Login_ComDadosValidosESucessoCompleto_DeveRetornarOkComTokenEEstatisticas" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="342436cd-df14-e687-5009-52f20d19530a">
+      <Execution id="33dcde82-04ca-41b3-8d2b-c2f12a694fc6" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComDadosValidosESucessoCompleto_DeveRetornarOkComTokenEEstatisticas" />
+    </UnitTest>
+    <UnitTest name="ObterPerfil_ComTokenSemUsuario_DeveRetornarUnauthorized" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="ec9fbc21-2306-1b97-febb-ad157cdb9569">
+      <Execution id="0720f214-275f-4432-9005-04aa29925155" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTests" name="ObterPerfil_ComTokenSemUsuario_DeveRetornarUnauthorized" />
+    </UnitTest>
+    <UnitTest name="Login_ComEmailInexistente_DeveRetornarUnauthorized" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="94b37c50-a786-2dc3-a3e6-6bf253e32a85">
+      <Execution id="a2ac9eb6-f07b-4298-ae82-504f896c2efa" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComEmailInexistente_DeveRetornarUnauthorized" />
+    </UnitTest>
+    <UnitTest name="Login_ComSenhaIncorreta_DeveRetornarUnauthorizedComContadorTentativas" storage="d:\projetos\gestus\tests\gestus.tests\bin\debug\net8.0\gestus.tests.dll" id="645bd0ca-5226-c88f-ca38-40a4998cd635">
+      <Execution id="8d5ad672-d65c-4544-ba8d-ca9b194da639" />
+      <TestMethod codeBase="D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin" name="Login_ComSenhaIncorreta_DeveRetornarUnauthorizedComContadorTentativas" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="d8e1807c-fc52-1031-e8ff-f74b0aabb617" executionId="b5dbf04f-f0b9-4f06-88bd-9c50c5b068fc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1b886509-a511-8697-4334-724b90661321" executionId="dab271d9-ae35-4f20-a885-8b778ff69649" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b6760048-2306-50ee-affd-a228a5efe2ee" executionId="d798a54e-d938-4575-b8ca-41c5f5f365b8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="301c44f1-d91d-aa3f-2974-2e6946feb190" executionId="565d1811-5245-4e61-8624-7b9cca3d0c67" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d0f9d652-0e28-a9ce-4aa6-bb80f80c2636" executionId="9f0dc666-9429-4995-85d1-5b7c2ef14136" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1530230f-1d8e-b6f0-97b4-ffa4a10326bd" executionId="5db2b7fc-049b-4ebd-a556-40e3f2f5af3b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="94b37c50-a786-2dc3-a3e6-6bf253e32a85" executionId="a2ac9eb6-f07b-4298-ae82-504f896c2efa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="342436cd-df14-e687-5009-52f20d19530a" executionId="33dcde82-04ca-41b3-8d2b-c2f12a694fc6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a11735ef-b381-9cf8-6dab-6561d3c81fa4" executionId="0f3a230e-698f-41bd-b9a1-957e4428b0b0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="94a6773b-5cf6-1803-8284-4f6404555315" executionId="8f4b2276-4406-4818-b755-58e123e195a5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2e52346d-f428-cdda-5b0e-b59dfe792bff" executionId="b3e11e91-a123-405f-88a7-8bb9933545dd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c27c0a2b-8236-bedd-02c3-088c9123ff32" executionId="4a4b6aef-0c91-4ac3-8ff2-68b51b26b18e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d4ed75ba-3657-6106-a8a0-cbcb5383f23f" executionId="67a6ae06-e31d-461d-a875-203fa73404f4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c689715b-8b9f-e1fc-1007-d9df8930133d" executionId="06b0040f-b3fa-46a0-9b6e-4b5b6ff62606" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b4adcc27-f0d7-5b81-cbc4-bd24e0c0d702" executionId="f9f21e3f-7a50-431a-8289-b783bf1cb9ad" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="730cabf7-2010-72d4-ae58-271be2aec0ee" executionId="59ebb6ea-8fe3-4f74-a2f9-b2fa6db5361a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ec9fbc21-2306-1b97-febb-ad157cdb9569" executionId="0720f214-275f-4432-9005-04aa29925155" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b74813dc-2549-b107-9612-d229acbcc1c8" executionId="5ba198aa-a99e-4163-b8ad-c90697ea56b9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="62c21ef7-7c0c-bf52-eff9-c753747bb7fc" executionId="a24cb71a-c9d5-4b39-bf25-fe7c79156f6d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="645bd0ca-5226-c88f-ca38-40a4998cd635" executionId="8d5ad672-d65c-4544-ba8d-ca9b194da639" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="84c540cc-7044-a79b-e411-f72e4d5e10d9" executionId="9c6e9fa3-38f5-4d11-bd4c-5cca2d15eccb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="678911ab-7f23-d51d-71f3-093ec70ce587" executionId="3eaff679-5d40-47ef-b921-79375cfb5adc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="121b694f-d044-ecab-cc4c-17082e02d50b" executionId="63e583db-d590-40d7-86e9-5d1ff6ead3a6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5ee89b7e-b477-c3e4-4e5d-252e4fa76839" executionId="e1ffad44-d2dc-4c92-b4df-597c7951927e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0c1c2629-1b98-f4a3-9c2b-d97e0cad5099" executionId="4ed3f31e-3758-497c-9d60-7da358a019b5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c2cf51de-66f7-8ac3-ca45-b5e3065cb587" executionId="79119dae-f397-4c96-bdf7-f78a88bf064d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7f204866-ae39-d3fc-9a4c-070f4ce3cef9" executionId="d07bf08c-ca09-4ab1-86b8-597fa7b6d5ff" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fc6065de-ced2-d1f1-4017-cb0c615a369b" executionId="aa00c78f-c38a-4a58-8e46-002c65ef35b6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Resultados que não estão em uma lista" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Todos os resultados carregados" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="28" executed="28" passed="20" failed="8" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>NUnit Adapter 4.5.0.0: Test execution started&#xD;
+Running all tests in D:\projetos\Gestus\Tests\Gestus.Tests\bin\Debug\net8.0\Gestus.Tests.dll&#xD;
+   NUnit3TestExecutor discovered 28 of 28 NUnit test cases using Current Discovery mode, Non-Explicit run&#xD;
+NUnit Adapter 4.5.0.0: Test execution complete&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="MICRO302" outcome="Warning" timestamp="2025-10-13T07:57:52.2861839-03:00">
+        <Text>     Warning:&#xD;
+     The component "Fluent Assertions" is governed by the rules defined in the Xceed License Agreement and&#xD;
+     the Xceed Fluent Assertions Community License. You may use Fluent Assertions free of charge for&#xD;
+     non-commercial use only. An active subscription is required to use Fluent Assertions for commercial use.&#xD;
+&#xD;
+     Please contact Xceed Sales mailto:sales@xceed.com to acquire a subscription at a very low cost.&#xD;
+&#xD;
+     A paid commercial license supports the development and continued increasing support of&#xD;
+     Fluent Assertions users under both commercial and community licenses. Help us&#xD;
+     keep Fluent Assertions at the forefront of unit testing.&#xD;
+&#xD;
+     For more information, visit https://xceed.com/products/unit-testing/fluent-assertions/&#xD;
+</Text>
+      </RunInfo>
+      <RunInfo computerName="MICRO302" outcome="Warning" timestamp="2025-10-13T07:57:52.4184494-03:00">
+        <Text>Setup failed for test fixture Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin</Text>
+      </RunInfo>
+      <RunInfo computerName="MICRO302" outcome="Warning" timestamp="2025-10-13T07:57:52.4187462-03:00">
+        <Text>System.NotSupportedException : Unsupported expression: x =&gt; x.Options&#xD;
+Non-overridable members (here: UserManager&lt;Usuario&gt;.get_Options) may not be used in setup / verification expressions.
+StackTrace:    at Moq.Guard.IsOverridable(MethodInfo method, Expression expression) in /_/src/Moq/Guard.cs:line 99&#xD;
+   at Moq.MethodExpectation..ctor(LambdaExpression expression, MethodInfo method, IReadOnlyList`1 arguments, Boolean exactGenericTypeArguments, Boolean skipMatcherInitialization, Boolean allowNonOverridable) in /_/src/Moq/MethodExpectation.cs:line 236&#xD;
+   at Moq.ExpressionExtensions.&lt;Split&gt;g__Split|5_0(Expression e, Expression&amp; r, MethodExpectation&amp; p, Boolean assignment, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 347&#xD;
+   at Moq.ExpressionExtensions.Split(LambdaExpression expression, Boolean allowNonOverridableLastProperty) in /_/src/Moq/ExpressionExtensions.cs:line 170&#xD;
+   at Moq.Mock.SetupRecursive[TSetup](Mock mock, LambdaExpression expression, Func`4 setupLast, Boolean allowNonOverridableLastProperty) in /_/src/Moq/Mock.cs:line 728&#xD;
+   at Moq.Mock.Setup(Mock mock, LambdaExpression expression, Condition condition) in /_/src/Moq/Mock.cs:line 562&#xD;
+   at Moq.Mock`1.Setup[TResult](Expression`1 expression) in /_/src/Moq/Mock`1.cs:line 645&#xD;
+   at Gestus.Tests.Controllers.AutenticacaoControllerTestsLogin..ctor() in D:\projetos\Gestus\Tests\Gestus.Tests\Controllers\AutenticacaoControllerTests.Login.cs:line 61&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

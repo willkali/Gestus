@@ -27,7 +27,7 @@ public class AutenticacaoController : ControllerBase
     private readonly ITimezoneService _timezoneService;
     private readonly ILogger<AutenticacaoController> _logger;
     private readonly GestusDbContexto _context;
-    private readonly UsuarioLoginService _loginService;
+    private readonly IUsuarioLoginService _loginService;
 
     public AutenticacaoController(
         UserManager<Usuario> userManager,
@@ -35,7 +35,7 @@ public class AutenticacaoController : ControllerBase
         RoleManager<Papel> roleManager,
         ITimezoneService timezoneService,
         GestusDbContexto context,
-        UsuarioLoginService loginService,
+        IUsuarioLoginService loginService,
         ILogger<AutenticacaoController> logger)
     {
         _userManager = userManager;

@@ -36,13 +36,16 @@ public class CriarUsuarioValidator : AbstractValidator<CriarUsuarioRequest>
             .Matches(@"^\+?[1-9]\d{1,14}$").WithMessage("Telefone deve ter formato válido")
             .When(x => !string.IsNullOrEmpty(x.Telefone));
 
+        // Senha é obrigatória apenas quando NÃO for gerar automaticamente
         RuleFor(x => x.Senha)
-            .NotEmpty().WithMessage("Senha é obrigatória")
+            .NotEmpty().WithMessage("Senha é obrigatória quando não gerar automaticamente")
             .MinimumLength(6).WithMessage("Senha deve ter pelo menos 6 caracteres")
-            .Must(SenhaDeveSerSegura).WithMessage("Senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número");
+            .Must(SenhaDeveSerSegura).WithMessage("Senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número")
+            .When(x => !x.EnviarSenhaEmail); // Apenas quando não gerar automaticamente
 
         RuleFor(x => x.ConfirmarSenha)
-            .Equal(x => x.Senha).WithMessage("Confirmação de senha não confere");
+            .Equal(x => x.Senha).WithMessage("Confirmação de senha não confere")
+            .When(x => !x.EnviarSenhaEmail && !string.IsNullOrEmpty(x.Senha)); // Apenas quando senha foi fornecida
 
         RuleFor(x => x.Observacoes)
             .MaximumLength(500).WithMessage("Observações devem ter no máximo 500 caracteres");

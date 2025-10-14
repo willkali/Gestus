@@ -24,12 +24,20 @@ public class CriarUsuarioRequest
     [MaxLength(20, ErrorMessage = "Telefone deve ter no máximo 20 caracteres")]
     public string? Telefone { get; set; }
 
-    [Required(ErrorMessage = "Senha é obrigatória")]
-    [MinLength(6, ErrorMessage = "Senha deve ter pelo menos 6 caracteres")]
-    public string Senha { get; set; } = string.Empty;
+    /// <summary>
+    /// Senha do usuário (opcional quando EnviarSenhaEmail = true)
+    /// </summary>
+    public string? Senha { get; set; }
 
-    [Compare("Senha", ErrorMessage = "Confirmação de senha não confere")]
-    public string ConfirmarSenha { get; set; } = string.Empty;
+    /// <summary>
+    /// Confirmação da senha (opcional quando EnviarSenhaEmail = true)
+    /// </summary>
+    public string? ConfirmarSenha { get; set; }
+    
+    /// <summary>
+    /// Se true, gera senha automaticamente e envia por email. Se false, usa a senha fornecida.
+    /// </summary>
+    public bool EnviarSenhaEmail { get; set; } = true;
 
     public bool Ativo { get; set; } = true;
     public bool ConfirmarEmailImediatamente { get; set; } = false;
