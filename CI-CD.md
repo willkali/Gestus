@@ -288,5 +288,5 @@ Isso significa:
 
 ---
 
-**Última atualização:** 04/12/2024  
+**Última atualização:** 04/12/2025
 **Versão:** 1.0

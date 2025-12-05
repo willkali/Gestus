@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Gestus.Api/Gestus.Api.csproj" />
+  <Project Path="Gestus.Application/Gestus.Application.csproj" />
+  <Project Path="Gestus.Domain/Gestus.Domain.csproj" />
+  <Project Path="Gestus.Infrastructure/Gestus.Infrastructure.csproj" />
+  <Project Path="Gestus.Tests/Gestus.Tests.csproj" />
+</Solution>

@@ -160,4 +160,4 @@ Este projeto é proprietário e confidencial.
 
 **Status do Projeto:** 🚧 Em Desenvolvimento Ativo
 
-**Última atualização:** Dezembro 2024
+**Última atualização:** Dezembro 2025
