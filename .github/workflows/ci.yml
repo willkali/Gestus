@@ -1,0 +1,353 @@
+name: CI - Validação de Padrões Gestus
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  SOLUTION_PATH: 'Gestus.sln'
+
+jobs:
+  # ============================================
+  # Job 1: Validação de Formatação
+  # ============================================
+  format-validation:
+    name: 🎨 Validação de Formatação
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: 📦 Restaurar dependências
+      run: dotnet restore ${{ env.SOLUTION_PATH }}
+      
+    - name: 🎨 Verificar formatação
+      run: |
+        dotnet format ${{ env.SOLUTION_PATH }} --verify-no-changes --verbosity diagnostic
+        if [ $? -ne 0 ]; then
+          echo "❌ Código não está formatado corretamente!"
+          echo "Execute: dotnet format"
+          exit 1
+        fi
+        echo "✅ Formatação OK!"
+
+  # ============================================
+  # Job 2: Análise Estática e Build
+  # ============================================
+  build-and-analyze:
+    name: 🔨 Build e Análise Estática
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: 📦 Restaurar dependências
+      run: dotnet restore ${{ env.SOLUTION_PATH }}
+      
+    - name: 🔨 Build
+      run: |
+        dotnet build ${{ env.SOLUTION_PATH }} \
+          --configuration Release \
+          --no-restore \
+          /p:TreatWarningsAsErrors=true \
+          /p:WarningLevel=4
+          
+    - name: 📊 Análise de código
+      run: |
+        dotnet build ${{ env.SOLUTION_PATH }} \
+          --configuration Release \
+          --no-restore \
+          /p:RunAnalyzers=true \
+          /p:EnforceCodeStyleInBuild=true
+
+  # ============================================
+  # Job 3: Testes
+  # ============================================
+  tests:
+    name: 🧪 Testes
+    runs-on: ubuntu-latest
+    needs: build-and-analyze
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: 📦 Restaurar dependências
+      run: dotnet restore ${{ env.SOLUTION_PATH }}
+      
+    - name: 🔨 Build
+      run: dotnet build ${{ env.SOLUTION_PATH }} --configuration Release --no-restore
+      
+    - name: 🧪 Executar testes
+      run: |
+        dotnet test ${{ env.SOLUTION_PATH }} \
+          --configuration Release \
+          --no-build \
+          --verbosity normal \
+          --logger "trx;LogFileName=test-results.trx" \
+          --collect:"XPlat Code Coverage" \
+          --results-directory ./TestResults
+          
+    - name: 📊 Upload resultados dos testes
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: ./TestResults
+        
+    - name: 📈 Publicar cobertura
+      if: always()
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./TestResults/**/coverage.cobertura.xml
+        flags: unittests
+        name: codecov-gestus
+
+  # ============================================
+  # Job 4: Validação de Nomenclatura
+  # ============================================
+  naming-validation:
+    name: 📝 Validação de Nomenclatura
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Verificar nomenclatura em português
+      run: |
+        echo "🔍 Verificando nomenclatura..."
+        
+        # Verificar se há classes/métodos em inglês (exceto keywords)
+        ENGLISH_NAMES=$(grep -r --include="*.cs" \
+          -E "(class|interface|enum)\s+(User|Role|Permission|Application|Group)" \
+          --exclude-dir={bin,obj,Migrations} \
+          . || true)
+        
+        if [ ! -z "$ENGLISH_NAMES" ]; then
+          echo "❌ Encontradas classes em inglês:"
+          echo "$ENGLISH_NAMES"
+          echo ""
+          echo "📋 Padrão: Classes devem estar em português"
+          echo "Exemplos: Usuario, Papel, Permissao, Aplicacao, Grupo"
+          exit 1
+        fi
+        
+        echo "✅ Nomenclatura OK!"
+        
+    - name: 🔍 Verificar sufixo Async
+      run: |
+        echo "🔍 Verificando sufixo Async..."
+        
+        # Verificar métodos async sem sufixo Async
+        MISSING_ASYNC=$(grep -r --include="*.cs" \
+          -E "public\s+async\s+Task.*\s+\w+\(" \
+          --exclude-dir={bin,obj,Migrations} \
+          . | grep -v "Async(" || true)
+        
+        if [ ! -z "$MISSING_ASYNC" ]; then
+          echo "❌ Métodos async sem sufixo 'Async':"
+          echo "$MISSING_ASYNC"
+          echo ""
+          echo "📋 Padrão: Métodos async devem ter sufixo 'Async'"
+          exit 1
+        fi
+        
+        echo "✅ Sufixo Async OK!"
+
+  # ============================================
+  # Job 5: Validação de Estrutura
+  # ============================================
+  structure-validation:
+    name: 🏗️ Validação de Estrutura
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Verificar um arquivo = uma classe
+      run: |
+        echo "🔍 Verificando estrutura de arquivos..."
+        
+        # Verificar arquivos com múltiplas classes públicas
+        MULTI_CLASS_FILES=$(find . -name "*.cs" \
+          -not -path "*/bin/*" \
+          -not -path "*/obj/*" \
+          -not -path "*/Migrations/*" \
+          -exec sh -c '
+            PUBLIC_CLASSES=$(grep -c "^[[:space:]]*public class\|^[[:space:]]*public interface\|^[[:space:]]*public enum" "$1" 2>/dev/null || echo 0)
+            if [ "$PUBLIC_CLASSES" -gt 1 ]; then
+              echo "$1 tem $PUBLIC_CLASSES classes/interfaces/enums públicos"
+            fi
+          ' _ {} \; || true)
+        
+        if [ ! -z "$MULTI_CLASS_FILES" ]; then
+          echo "❌ Arquivos com múltiplas classes públicas:"
+          echo "$MULTI_CLASS_FILES"
+          echo ""
+          echo "📋 Padrão: Um arquivo = Uma classe/interface/enum"
+          exit 1
+        fi
+        
+        echo "✅ Estrutura de arquivos OK!"
+        
+    - name: 🔍 Verificar DTOs fora de controllers
+      run: |
+        echo "🔍 Verificando DTOs em controllers..."
+        
+        # Verificar se há DTOs definidos dentro de controllers
+        DTOS_IN_CONTROLLERS=$(find ./Gestus.Api/Controllers -name "*.cs" 2>/dev/null \
+          -exec grep -l "public class.*Request\|public class.*Response\|public class.*Dto" {} \; || true)
+        
+        if [ ! -z "$DTOS_IN_CONTROLLERS" ]; then
+          echo "❌ DTOs encontrados dentro de controllers:"
+          echo "$DTOS_IN_CONTROLLERS"
+          echo ""
+          echo "📋 Padrão: DTOs devem estar em Gestus.Application/DTOs/"
+          exit 1
+        fi
+        
+        echo "✅ DTOs OK!"
+
+  # ============================================
+  # Job 6: Validação de Segurança
+  # ============================================
+  security-validation:
+    name: 🔒 Validação de Segurança
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Verificar senhas em logs
+      run: |
+        echo "🔍 Verificando logs de dados sensíveis..."
+        
+        # Verificar se há logs de senhas/tokens
+        SENSITIVE_LOGS=$(grep -r --include="*.cs" \
+          -iE "LogInformation.*senha|LogDebug.*senha|LogWarning.*senha|LogError.*senha" \
+          --exclude-dir={bin,obj,Migrations} \
+          . || true)
+        
+        if [ ! -z "$SENSITIVE_LOGS" ]; then
+          echo "⚠️ AVISO: Possível log de dados sensíveis:"
+          echo "$SENSITIVE_LOGS"
+          echo ""
+          echo "📋 Padrão: NUNCA logar senhas, tokens ou dados sensíveis"
+          echo "Revise manualmente se isso é realmente um problema"
+        fi
+        
+        # Verificar secrets em appsettings
+        SECRETS_IN_CONFIG=$(grep -r --include="appsettings*.json" \
+          -iE "password.*:.*[^{]|secret.*:.*[^{]|key.*:.*[^{]" \
+          --exclude="appsettings.json" \
+          . || true)
+        
+        if [ ! -z "$SECRETS_IN_CONFIG" ]; then
+          echo "❌ Secrets encontrados em arquivos de configuração:"
+          echo "$SECRETS_IN_CONFIG"
+          echo ""
+          echo "📋 Padrão: Usar variáveis de ambiente ou User Secrets"
+          exit 1
+        fi
+        
+        echo "✅ Validação de segurança OK!"
+
+  # ============================================
+  # Job 7: Validação de Documentação
+  # ============================================
+  documentation-validation:
+    name: 📚 Validação de Documentação
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Verificar XML comments
+      run: |
+        echo "🔍 Verificando documentação XML..."
+        
+        # Verificar classes públicas sem XML comments
+        MISSING_DOCS=$(find . -name "*.cs" \
+          -not -path "*/bin/*" \
+          -not -path "*/obj/*" \
+          -not -path "*/Migrations/*" \
+          -exec sh -c '
+            # Verificar se há classes públicas sem /// <summary>
+            grep -B1 "^[[:space:]]*public class\|^[[:space:]]*public interface" "$1" 2>/dev/null | \
+            grep -v "///" | grep -v "^--$" | grep "public" || true
+          ' _ {} \; || true)
+        
+        if [ ! -z "$MISSING_DOCS" ]; then
+          echo "⚠️ AVISO: Classes públicas sem XML comments:"
+          echo "$MISSING_DOCS"
+          echo ""
+          echo "📋 Padrão: Todos os membros públicos devem ter XML comments"
+          echo "Isso não bloqueia o build, mas deve ser corrigido"
+        fi
+        
+        echo "✅ Validação de documentação concluída!"
+
+  # ============================================
+  # Job Final: Resumo
+  # ============================================
+  summary:
+    name: 📊 Resumo da Validação
+    runs-on: ubuntu-latest
+    needs: [format-validation, build-and-analyze, tests, naming-validation, structure-validation, security-validation, documentation-validation]
+    if: always()
+    
+    steps:
+    - name: 📊 Gerar resumo
+      run: |
+        echo "# 📊 Resumo da Validação de Padrões" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## ✅ Validações Executadas" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎨 Formatação de código" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔨 Build e análise estática" >> $GITHUB_STEP_SUMMARY
+        echo "- 🧪 Testes unitários" >> $GITHUB_STEP_SUMMARY
+        echo "- 📝 Nomenclatura em português" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏗️ Estrutura de arquivos" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔒 Segurança (logs e secrets)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📚 Documentação XML" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📋 Padrões Gestus" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Todos os padrões definidos em PADRONIZACAO.md foram validados!" >> $GITHUB_STEP_SUMMARY
+        
+    - name: ✅ Sucesso
+      if: ${{ needs.format-validation.result == 'success' && needs.build-and-analyze.result == 'success' && needs.tests.result == 'success' && needs.naming-validation.result == 'success' && needs.structure-validation.result == 'success' && needs.security-validation.result == 'success' }}
+      run: |
+        echo "✅ Todas as validações passaram!"
+        echo "O código está em conformidade com os padrões Gestus!"
+        
+    - name: ❌ Falha
+      if: ${{ needs.format-validation.result == 'failure' || needs.build-and-analyze.result == 'failure' || needs.tests.result == 'failure' || needs.naming-validation.result == 'failure' || needs.structure-validation.result == 'failure' || needs.security-validation.result == 'failure' }}
+      run: |
+        echo "❌ Algumas validações falharam!"
+        echo "Revise os logs acima para detalhes"
+        exit 1
