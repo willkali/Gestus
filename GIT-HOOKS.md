@@ -39,8 +39,8 @@ O hook `pre-commit` executa as seguintes validações **automaticamente** antes 
 
 ### 6. 📚 Documentação
 - Verifica XML comments em classes públicas
-- **Não bloqueia**, apenas avisa
-- **Como corrigir:** Adicionar `/// <summary>`
+- **Bloqueia commit** se encontrar classes sem documentação
+- **Como corrigir:** Adicionar `/// <summary>` em todas as classes/interfaces/enums públicos
 
 ## 🚀 Instalação
 

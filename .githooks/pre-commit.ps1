@@ -85,6 +85,13 @@ Write-Host ""
 # ============================================
 Write-Info "Validando nomenclatura em português..."
 
+# Whitelist de acrônimos permitidos
+$AcronimosPermitidos = @(
+    'API', 'HTTP', 'HTTPS', 'URL', 'URI', 'XML', 'JSON', 'JWT', 
+    'OAUTH', 'SAML', 'LDAP', 'AD', 'IAM', 'DTO', 'DAO', 'CRUD',
+    'UUID', 'GUID', 'SQL', 'TCP', 'IP', 'FTP', 'SMTP'
+)
+
 # Verificar classes em inglês (apenas arquivos staged)
 $EnglishClasses = @()
 foreach ($File in $CsFiles) {
@@ -107,7 +114,17 @@ foreach ($File in $CsFiles) {
         
         foreach ($Pattern in $EnglishPatterns) {
             if ($Content -match $Pattern) {
-                $EnglishClasses += "$File : $($Matches[0])"
+                $Match = $Matches[0]
+                
+                # Extrair nome da classe/interface
+                if ($Match -match '\s+(\w+)$') {
+                    $NomeClasse = $Matches[1]
+                    
+                    # Verificar se é acrônimo permitido
+                    if ($NomeClasse -notin $AcronimosPermitidos) {
+                        $EnglishClasses += "$File : $Match"
+                    }
+                }
             }
         }
     }
@@ -292,7 +309,7 @@ foreach ($File in $CsFiles) {
 }
 
 if ($MissingDocs.Count -gt 0) {
-    Write-Warning-Custom "AVISO: Classes públicas sem XML comments:"
+    Write-Error-Custom "Classes públicas sem XML comments:"
     foreach ($Item in $MissingDocs | Select-Object -First 5) {
         Write-Host "  $Item" -ForegroundColor Gray
     }
@@ -300,10 +317,14 @@ if ($MissingDocs.Count -gt 0) {
         Write-Host "  ... e mais $($MissingDocs.Count - 5) arquivo(s)" -ForegroundColor Gray
     }
     Write-Host ""
-    Write-Host "📋 Padrão: Todos os membros públicos devem ter XML comments" -ForegroundColor Yellow
-    Write-Host "Isso não bloqueia o commit, mas deve ser corrigido" -ForegroundColor White
+    Write-Host "📋 Padrão: Todos os membros públicos DEVEM ter XML comments" -ForegroundColor Yellow
+    Write-Host "Exemplo:" -ForegroundColor White
+    Write-Host "/// <summary>" -ForegroundColor White
+    Write-Host "/// Descrição da classe" -ForegroundColor White
+    Write-Host "/// </summary>" -ForegroundColor White
+    Write-Host "public class MinhaClasse { }" -ForegroundColor White
     Write-Host ""
-    # Não bloqueia, apenas avisa
+    $HasErrors = $true
 } else {
     Write-Success "Documentação OK"
 }

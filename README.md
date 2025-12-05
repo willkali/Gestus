@@ -44,11 +44,11 @@ Este projeto segue padrões rigorosos de desenvolvimento:
 - ✅ **Nomenclatura em Português** - Classes, métodos e variáveis
 - ✅ **Um Arquivo = Uma Classe** - Organização clara
 - ✅ **Formatação Allman** - Chaves em linha separada
-- ✅ **XML Comments** - Documentação obrigatória
+- ✅ **XML Comments** - Documentação obrigatória (bloqueia commits)
 - ✅ **Async/Await** - Sufixo `Async` obrigatório
 - ✅ **Segurança** - Nunca logar dados sensíveis
 
-📖 **Documentação completa:** [PADRONIZACAO.md](PADRONIZACAO.md) *(não versionado)*
+📖 **Documentação completa:** [PADRONIZACAO.md](PADRONIZACAO.md)
 
 ## 🔧 Pré-requisitos
 

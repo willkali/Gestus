@@ -73,7 +73,7 @@ public async Task<Usuario> ObterPorId(int id) { }
 
 ### 7. 📚 Documentação
 - Verifica se classes públicas têm XML comments
-- **Não bloqueia o build**, apenas avisa
+- **Falha se**: Encontrar classes/interfaces/enums públicos sem documentação
 
 **Padrão:**
 ```csharp
@@ -82,6 +82,11 @@ public async Task<Usuario> ObterPorId(int id) { }
 /// </summary>
 public class MinhaClasse { }
 ```
+
+**Obrigatório para:**
+- Todas as classes públicas
+- Todas as interfaces públicas
+- Todos os enums públicos
 
 ## 🔧 Configuração Local
 

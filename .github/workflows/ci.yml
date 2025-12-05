@@ -134,46 +134,119 @@ jobs:
     - name: 📥 Checkout código
       uses: actions/checkout@v4
       
-    - name: 🔍 Verificar nomenclatura em português
+    - name: 🔧 Setup PowerShell
       run: |
-        echo "🔍 Verificando nomenclatura..."
+        # PowerShell já vem instalado no Ubuntu runner
+        pwsh --version
+      
+    - name: 🔍 Verificar nomenclatura em português
+      shell: pwsh
+      run: |
+        Write-Host "🔍 Verificando nomenclatura em português..."
         
-        # Verificar se há classes/métodos em inglês (exceto keywords)
-        ENGLISH_NAMES=$(grep -r --include="*.cs" \
-          -E "(class|interface|enum)\s+(User|Role|Permission|Application|Group)" \
-          --exclude-dir={bin,obj,Migrations} \
-          . || true)
+        # Whitelist de acrônimos permitidos
+        $AcronimosPermitidos = @(
+          'API', 'HTTP', 'HTTPS', 'URL', 'URI', 'XML', 'JSON', 'JWT',
+          'OAUTH', 'SAML', 'LDAP', 'AD', 'IAM', 'DTO', 'DAO', 'CRUD',
+          'UUID', 'GUID', 'SQL', 'TCP', 'IP', 'FTP', 'SMTP', 'LINQ'
+        )
         
-        if [ ! -z "$ENGLISH_NAMES" ]; then
-          echo "❌ Encontradas classes em inglês:"
-          echo "$ENGLISH_NAMES"
-          echo ""
-          echo "📋 Padrão: Classes devem estar em português"
-          echo "Exemplos: Usuario, Papel, Permissao, Aplicacao, Grupo"
+        $EnglishFiles = @()
+        $CsFiles = Get-ChildItem -Path . -Recurse -Filter *.cs | Where-Object {
+          $_.FullName -notmatch '[\\/]obj[\\/]' -and 
+          $_.FullName -notmatch '[\\/]bin[\\/]' -and
+          $_.FullName -notmatch 'Migrations'
+        }
+        
+        foreach ($File in $CsFiles) {
+          $Content = Get-Content $File.FullName -Raw
+          
+          # Padrões de classes/interfaces/enums em inglês comuns
+          $EnglishPatterns = @(
+            'public\s+class\s+User\b',
+            'public\s+class\s+Role\b',
+            'public\s+class\s+Permission\b',
+            'public\s+class\s+Application\b',
+            'public\s+class\s+Group\b',
+            'public\s+interface\s+IUser',
+            'public\s+interface\s+IRole',
+            'public\s+interface\s+IPermission',
+            'public\s+enum\s+UserStatus',
+            'public\s+enum\s+RoleType'
+          )
+          
+          foreach ($Pattern in $EnglishPatterns) {
+            if ($Content -match $Pattern) {
+              $Match = $Matches[0]
+              
+              # Extrair nome da classe/interface/enum
+              if ($Match -match '\s+(\w+)(?:\s|$)') {
+                $NomeClasse = $Matches[1]
+                
+                # Verificar se NÃO é acrônimo permitido
+                $IsAcronym = $false
+                foreach ($Acronimo in $AcronimosPermitidos) {
+                  if ($NomeClasse -eq $Acronimo -or $NomeClasse -like "*$Acronimo" -or $NomeClasse -like "$Acronimo*") {
+                    $IsAcronym = $true
+                    break
+                  }
+                }
+                
+                if (-not $IsAcronym) {
+                  $RelPath = $File.FullName.Replace($PWD.Path, '.').Replace('\', '/')
+                  $EnglishFiles += "$RelPath : $Match"
+                }
+              }
+            }
+          }
+        }
+        
+        if ($EnglishFiles.Count -gt 0) {
+          Write-Host "❌ Encontradas classes/interfaces em inglês:" -ForegroundColor Red
+          $EnglishFiles | ForEach-Object { Write-Host "  $_" }
+          Write-Host ""
+          Write-Host "📋 Padrão: Classes devem estar em português" -ForegroundColor Yellow
+          Write-Host "Exemplos: Usuario, Papel, Permissao, Aplicacao, Grupo"
           exit 1
-        fi
+        }
         
-        echo "✅ Nomenclatura OK!"
+        Write-Host "✅ Nomenclatura OK!" -ForegroundColor Green
         
     - name: 🔍 Verificar sufixo Async
+      shell: pwsh
       run: |
-        echo "🔍 Verificando sufixo Async..."
+        Write-Host "🔍 Verificando sufixo Async..."
         
-        # Verificar métodos async sem sufixo Async
-        MISSING_ASYNC=$(grep -r --include="*.cs" \
-          -E "public\s+async\s+Task.*\s+\w+\(" \
-          --exclude-dir={bin,obj,Migrations} \
-          . | grep -v "Async(" || true)
+        $MissingAsync = @()
+        $CsFiles = Get-ChildItem -Path . -Recurse -Filter *.cs | Where-Object {
+          $_.FullName -notmatch '[\\/]obj[\\/]' -and 
+          $_.FullName -notmatch '[\\/]bin[\\/]' -and
+          $_.FullName -notmatch 'Migrations'
+        }
         
-        if [ ! -z "$MISSING_ASYNC" ]; then
-          echo "❌ Métodos async sem sufixo 'Async':"
-          echo "$MISSING_ASYNC"
-          echo ""
-          echo "📋 Padrão: Métodos async devem ter sufixo 'Async'"
+        foreach ($File in $CsFiles) {
+          $Content = Get-Content $File.FullName -Raw
+          
+          # Procurar métodos async sem sufixo Async
+          $Matches = [regex]::Matches($Content, 'public\s+async\s+Task[<>]?.*?\s+(\w+)\s*\(')
+          foreach ($Match in $Matches) {
+            $MethodName = $Match.Groups[1].Value
+            if ($MethodName -notmatch 'Async$') {
+              $RelPath = $File.FullName.Replace($PWD.Path, '.').Replace('\', '/')
+              $MissingAsync += "$RelPath : $MethodName"
+            }
+          }
+        }
+        
+        if ($MissingAsync.Count -gt 0) {
+          Write-Host "❌ Métodos async sem sufixo 'Async':" -ForegroundColor Red
+          $MissingAsync | ForEach-Object { Write-Host "  $_" }
+          Write-Host ""
+          Write-Host "📋 Padrão: Métodos async devem ter sufixo 'Async'" -ForegroundColor Yellow
           exit 1
-        fi
+        }
         
-        echo "✅ Sufixo Async OK!"
+        Write-Host "✅ Sufixo Async OK!" -ForegroundColor Green
 
   # ============================================
   # Job 5: Validação de Estrutura
@@ -287,29 +360,72 @@ jobs:
       uses: actions/checkout@v4
       
     - name: 🔍 Verificar XML comments
+      shell: pwsh
       run: |
-        echo "🔍 Verificando documentação XML..."
+        Write-Host "🔍 Verificando documentação XML..." -ForegroundColor Cyan
+        Write-Host ""
         
         # Verificar classes públicas sem XML comments
-        MISSING_DOCS=$(find . -name "*.cs" \
-          -not -path "*/bin/*" \
-          -not -path "*/obj/*" \
-          -not -path "*/Migrations/*" \
-          -exec sh -c '
-            # Verificar se há classes públicas sem /// <summary>
-            grep -B1 "^[[:space:]]*public class\|^[[:space:]]*public interface" "$1" 2>/dev/null | \
-            grep -v "///" | grep -v "^--$" | grep "public" || true
-          ' _ {} \; || true)
+        $MissingDocs = @()
+        $CsFiles = Get-ChildItem -Path . -Recurse -Filter *.cs | Where-Object {
+          $_.FullName -notmatch '[\\/]obj[\\/]' -and 
+          $_.FullName -notmatch '[\\/]bin[\\/]' -and
+          $_.FullName -notmatch 'Migrations'
+        }
         
-        if [ ! -z "$MISSING_DOCS" ]; then
-          echo "⚠️ AVISO: Classes públicas sem XML comments:"
-          echo "$MISSING_DOCS"
-          echo ""
-          echo "📋 Padrão: Todos os membros públicos devem ter XML comments"
-          echo "Isso não bloqueia o build, mas deve ser corrigido"
-        fi
+        foreach ($File in $CsFiles) {
+          $Content = Get-Content $File.FullName -Raw
+          
+          # Procurar classes/interfaces/enums públicos sem XML comments
+          $PublicTypes = [regex]::Matches($Content, 'public\s+(class|interface|enum)\s+(\w+)')
+          
+          foreach ($Match in $PublicTypes) {
+            $TypeName = $Match.Groups[2].Value
+            $Position = $Match.Index
+            
+            # Pegar as 5 linhas anteriores para verificar se há XML comment
+            $BeforeMatch = $Content.Substring(0, $Position)
+            $Lines = $BeforeMatch -split "`n"
+            $PreviousLines = $Lines | Select-Object -Last 5
+            
+            # Verificar se há /// <summary> nas linhas anteriores
+            $HasXmlComment = $false
+            foreach ($Line in $PreviousLines) {
+              if ($Line -match '///\s*<summary>') {
+                $HasXmlComment = $true
+                break
+              }
+            }
+            
+            if (-not $HasXmlComment) {
+              $RelPath = $File.FullName.Replace($PWD.Path, '.').Replace('\', '/')
+              $MissingDocs += "$RelPath : $TypeName"
+            }
+          }
+        }
         
-        echo "✅ Validação de documentação concluída!"
+        if ($MissingDocs.Count -gt 0) {
+          Write-Host "❌ Encontradas $($MissingDocs.Count) classe(s)/interface(s) sem XML comments:" -ForegroundColor Red
+          $MissingDocs | Select-Object -First 10 | ForEach-Object { 
+            Write-Host "  $_" -ForegroundColor Gray 
+          }
+          
+          if ($MissingDocs.Count -gt 10) {
+            Write-Host "  ... e mais $($MissingDocs.Count - 10) arquivo(s)" -ForegroundColor Gray
+          }
+          
+          Write-Host "" 
+          Write-Host "📋 Padrão: Classes públicas DEVEM ter XML comments" -ForegroundColor Yellow
+          Write-Host "Exemplo:" -ForegroundColor White
+          Write-Host "/// <summary>"
+          Write-Host "/// Descrição da classe"
+          Write-Host "/// </summary>"
+          Write-Host "public class MinhaClasse { }"
+          
+          exit 1
+        } else {
+          Write-Host "✅ Documentação XML completa!" -ForegroundColor Green
+        }
 
   # ============================================
   # Job Final: Resumo

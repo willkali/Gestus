@@ -167,6 +167,16 @@ csharp_prefer_simple_using_statement = true:suggestion
 csharp_using_directive_placement = outside_namespace:warning
 
 # ============================================
+# Namespace - File-scoped vs Block-scoped
+# ============================================
+
+# Preferir file-scoped namespace (C# 10+)
+csharp_style_namespace_declarations = file_scoped:warning
+
+# Ou se preferir block-scoped (tradicional):
+# csharp_style_namespace_declarations = block_scoped:warning
+
+# ============================================
 # Naming Conventions - Gestus (Português)
 # ============================================
 
